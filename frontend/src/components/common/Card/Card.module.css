@@ -1,0 +1,29 @@
+.card {
+  background-color: var(--color-white);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-24);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-base) var(--easing-out);
+}
+
+.hoverable:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.selected {
+  border-left: 2px solid var(--color-terracotta);
+}
+
+.clickable {
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  border: none;
+  font-family: inherit;
+  color: inherit;
+}
+
+.clickable:active {
+  transform: translateY(0);
+}

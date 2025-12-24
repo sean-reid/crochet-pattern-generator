@@ -1,0 +1,74 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+}
+
+.wrapper.fullWidth {
+  width: 100%;
+}
+
+.label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-charcoal);
+}
+
+.input {
+  padding: var(--spacing-12);
+  font-size: var(--font-size-base);
+  font-family: var(--font-sans);
+  color: var(--color-charcoal);
+  background-color: var(--color-white);
+  border: 1px solid var(--color-gray-pale);
+  border-radius: var(--radius);
+  transition: all var(--transition-base) var(--easing-out);
+  outline: none;
+}
+
+.input:hover:not(:disabled) {
+  border-color: var(--color-gray-medium);
+}
+
+.input:focus {
+  border-color: var(--color-terracotta);
+  box-shadow: 0 0 0 3px rgba(198, 123, 92, 0.1);
+}
+
+.input.error {
+  border-color: var(--color-burgundy);
+}
+
+.input.error:focus {
+  box-shadow: 0 0 0 3px rgba(139, 79, 79, 0.1);
+}
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--color-gray-light);
+}
+
+.input.fullWidth {
+  width: 100%;
+}
+
+.input::placeholder {
+  color: var(--color-gray-medium);
+}
+
+.errorText {
+  font-size: var(--font-size-sm);
+  color: var(--color-burgundy);
+}
+
+.helperText {
+  font-size: var(--font-size-sm);
+  color: var(--color-gray-medium);
+}
+
+/* Number input styling */
+.input[type='number']::-webkit-inner-spin-button,
+.input[type='number']::-webkit-outer-spin-button {
+  opacity: 1;
+}
