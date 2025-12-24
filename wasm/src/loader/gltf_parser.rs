@@ -12,21 +12,21 @@ impl GltfLoader {
     }
 
     pub fn load_from_bytes(&self, data: &[u8]) -> Result<MeshData> {
-        // Parse GLTF - this handles both .gltf (JSON) and .glb (binary) formats
         let gltf = Gltf::from_slice(data).context("Failed to parse GLTF data")?;
         
-        // For GLB files, the binary data is in gltf.blob
-        // For GLTF files with external buffers, we need to load them differently
+        // For GLB files, binary data is embedded in blob
         let blob = gltf.blob.as_deref();
+        
+        // Parse buffer data - handle both blob and data URIs
+        let buffer_data = self.load_buffers(&gltf, blob)?;
         
         let mut all_vertices = Vec::new();
         let mut all_faces = Vec::new();
         let mut vertex_offset = 0u32;
         
-        // Process all scenes
         for scene in gltf.scenes() {
             for node in scene.nodes() {
-                self.process_node(&node, blob, &mut all_vertices, &mut all_faces, &mut vertex_offset)?;
+                self.process_node(&node, &buffer_data, &mut all_vertices, &mut all_faces, &mut vertex_offset)?;
             }
         }
         
@@ -43,10 +43,113 @@ impl GltfLoader {
         })
     }
 
+    fn load_buffers(&self, gltf: &Gltf, blob: Option<&[u8]>) -> Result<Vec<Option<Vec<u8>>>> {
+        let mut buffer_data = Vec::new();
+        
+        for buffer in gltf.buffers() {
+            match buffer.source() {
+                gltf::buffer::Source::Bin => {
+                    // GLB embedded binary data
+                    if let Some(blob_data) = blob {
+                        buffer_data.push(Some(blob_data.to_vec()));
+                    } else {
+                        buffer_data.push(None);
+                    }
+                }
+                gltf::buffer::Source::Uri(uri) => {
+                    // Check if it's a data URI
+                    if uri.starts_with("data:") {
+                        match self.decode_data_uri(uri) {
+                            Ok(decoded) => buffer_data.push(Some(decoded)),
+                            Err(e) => {
+                                crate::utils::log_error(&format!("Failed to decode data URI: {}", e));
+                                buffer_data.push(None);
+                            }
+                        }
+                    } else {
+                        crate::utils::log_error(&format!("External URI not supported: {}", uri));
+                        buffer_data.push(None);
+                    }
+                }
+            }
+        }
+        
+        Ok(buffer_data)
+    }
+
+    fn decode_data_uri(&self, uri: &str) -> Result<Vec<u8>> {
+        // Parse data URI format: data:[<mediatype>][;base64],<data>
+        if !uri.starts_with("data:") {
+            anyhow::bail!("Not a data URI");
+        }
+        
+        let uri = &uri[5..]; // Skip "data:"
+        
+        // Find the comma that separates metadata from data
+        let comma_pos = uri.find(',')
+            .ok_or_else(|| anyhow::anyhow!("Invalid data URI: no comma found"))?;
+        
+        let metadata = &uri[..comma_pos];
+        let data = &uri[comma_pos + 1..];
+        
+        // Check if it's base64 encoded
+        if metadata.contains("base64") {
+            // Decode base64
+            self.decode_base64(data)
+        } else {
+            // URL encoded - not commonly used for binary data
+            anyhow::bail!("Only base64 data URIs are supported")
+        }
+    }
+
+    fn decode_base64(&self, data: &str) -> Result<Vec<u8>> {
+        // Simple base64 decoder
+        let chars: Vec<char> = data.chars().filter(|c| !c.is_whitespace()).collect();
+        let mut result = Vec::new();
+        let mut i = 0;
+        
+        while i < chars.len() {
+            let mut sextet = [0u8; 4];
+            let mut sextet_count = 0;
+            
+            for j in 0..4 {
+                if i + j >= chars.len() {
+                    break;
+                }
+                
+                let c = chars[i + j];
+                sextet[j] = match c {
+                    'A'..='Z' => (c as u8) - b'A',
+                    'a'..='z' => (c as u8) - b'a' + 26,
+                    '0'..='9' => (c as u8) - b'0' + 52,
+                    '+' => 62,
+                    '/' => 63,
+                    '=' => break, // Padding
+                    _ => anyhow::bail!("Invalid base64 character: {}", c),
+                };
+                sextet_count += 1;
+            }
+            
+            if sextet_count >= 2 {
+                result.push((sextet[0] << 2) | (sextet[1] >> 4));
+            }
+            if sextet_count >= 3 {
+                result.push((sextet[1] << 4) | (sextet[2] >> 2));
+            }
+            if sextet_count >= 4 {
+                result.push((sextet[2] << 6) | sextet[3]);
+            }
+            
+            i += 4;
+        }
+        
+        Ok(result)
+    }
+
     fn process_node(
         &self,
         node: &gltf::Node,
-        blob: Option<&[u8]>,
+        buffer_data: &[Option<Vec<u8>>],
         vertices: &mut Vec<Vertex>,
         faces: &mut Vec<Face>,
         vertex_offset: &mut u32,
@@ -55,12 +158,12 @@ impl GltfLoader {
         
         if let Some(mesh) = node.mesh() {
             for primitive in mesh.primitives() {
-                self.process_primitive(&primitive, blob, &transform, vertices, faces, vertex_offset)?;
+                self.process_primitive(&primitive, buffer_data, &transform, vertices, faces, vertex_offset)?;
             }
         }
         
         for child in node.children() {
-            self.process_node(&child, blob, vertices, faces, vertex_offset)?;
+            self.process_node(&child, buffer_data, vertices, faces, vertex_offset)?;
         }
         
         Ok(())
@@ -69,41 +172,25 @@ impl GltfLoader {
     fn process_primitive(
         &self,
         primitive: &gltf::Primitive,
-        blob: Option<&[u8]>,
+        buffer_data: &[Option<Vec<u8>>],
         transform: &[[f32; 4]; 4],
         vertices: &mut Vec<Vertex>,
         faces: &mut Vec<Face>,
         vertex_offset: &mut u32,
     ) -> Result<()> {
-        // Create a reader that uses the blob data
         let reader = primitive.reader(|buffer| {
-            match buffer.source() {
-                gltf::buffer::Source::Bin => {
-                    // For GLB files, data is in the blob
-                    blob
-                }
-                gltf::buffer::Source::Uri(uri) => {
-                    // External URIs are not supported in WASM
-                    // Log the error but try to continue
-                    crate::utils::log_error(&format!("External URI not supported: {}", uri));
-                    None
-                }
-            }
+            buffer_data.get(buffer.index())
+                .and_then(|opt| opt.as_ref().map(|v| v.as_slice()))
         });
         
-        // Read positions (required)
         let positions = reader.read_positions()
             .context("Missing position attribute or buffer data not available")?;
         
-        // Read normals if available
         let normals = reader.read_normals();
-        
-        // Read texture coordinates if available
         let tex_coords = reader.read_tex_coords(0).map(|tc| tc.into_f32());
         
         let start_idx = vertices.len();
         
-        // Process each vertex
         for (i, position) in positions.enumerate() {
             let pos = self.apply_transform(position, transform);
             
@@ -129,7 +216,6 @@ impl GltfLoader {
             });
         }
         
-        // Read indices
         if let Some(indices) = reader.read_indices() {
             let indices_vec: Vec<u32> = indices.into_u32().collect();
             for chunk in indices_vec.chunks_exact(3) {
@@ -142,7 +228,6 @@ impl GltfLoader {
                 });
             }
         } else {
-            // No indices - assume sequential triangles
             let vertex_count = vertices.len() - start_idx;
             for i in (0..vertex_count).step_by(3) {
                 if i + 2 < vertex_count {
@@ -216,6 +301,16 @@ impl Default for GltfLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_decode_data_uri() {
+        let loader = GltfLoader::new();
+        
+        // Test base64 decoding
+        let uri = "data:application/octet-stream;base64,AAAA";
+        let result = loader.decode_data_uri(uri);
+        assert!(result.is_ok());
+    }
 
     #[test]
     fn test_transform_identity() {
