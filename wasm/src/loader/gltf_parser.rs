@@ -12,29 +12,21 @@ impl GltfLoader {
     }
 
     pub fn load_from_bytes(&self, data: &[u8]) -> Result<MeshData> {
+        // Parse GLTF - this handles both .gltf (JSON) and .glb (binary) formats
         let gltf = Gltf::from_slice(data).context("Failed to parse GLTF data")?;
+        
+        // For GLB files, the binary data is in gltf.blob
+        // For GLTF files with external buffers, we need to load them differently
         let blob = gltf.blob.as_deref();
         
         let mut all_vertices = Vec::new();
         let mut all_faces = Vec::new();
         let mut vertex_offset = 0u32;
         
-        // Load buffer data
-        let buffer_data = gltf.buffers().map(|buffer| {
-            match buffer.source() {
-                gltf::buffer::Source::Bin => {
-                    blob.map(|b| gltf::buffer::Data(b.to_vec()))
-                        .ok_or_else(|| anyhow::anyhow!("Binary buffer missing"))
-                }
-                gltf::buffer::Source::Uri(_) => {
-                    Err(anyhow::anyhow!("External URIs not supported in WASM"))
-                }
-            }
-        }).collect::<Result<Vec<_>>>()?;
-        
+        // Process all scenes
         for scene in gltf.scenes() {
             for node in scene.nodes() {
-                self.process_node(&node, &buffer_data, blob, &mut all_vertices, &mut all_faces, &mut vertex_offset)?;
+                self.process_node(&node, blob, &mut all_vertices, &mut all_faces, &mut vertex_offset)?;
             }
         }
         
@@ -54,7 +46,6 @@ impl GltfLoader {
     fn process_node(
         &self,
         node: &gltf::Node,
-        buffers: &[gltf::buffer::Data],
         blob: Option<&[u8]>,
         vertices: &mut Vec<Vertex>,
         faces: &mut Vec<Face>,
@@ -64,12 +55,12 @@ impl GltfLoader {
         
         if let Some(mesh) = node.mesh() {
             for primitive in mesh.primitives() {
-                self.process_primitive(&primitive, buffers, blob, &transform, vertices, faces, vertex_offset)?;
+                self.process_primitive(&primitive, blob, &transform, vertices, faces, vertex_offset)?;
             }
         }
         
         for child in node.children() {
-            self.process_node(&child, buffers, blob, vertices, faces, vertex_offset)?;
+            self.process_node(&child, blob, vertices, faces, vertex_offset)?;
         }
         
         Ok(())
@@ -78,33 +69,47 @@ impl GltfLoader {
     fn process_primitive(
         &self,
         primitive: &gltf::Primitive,
-        buffers: &[gltf::buffer::Data],
         blob: Option<&[u8]>,
         transform: &[[f32; 4]; 4],
         vertices: &mut Vec<Vertex>,
         faces: &mut Vec<Face>,
         vertex_offset: &mut u32,
     ) -> Result<()> {
+        // Create a reader that uses the blob data
         let reader = primitive.reader(|buffer| {
             match buffer.source() {
-                gltf::buffer::Source::Bin => blob,
-                gltf::buffer::Source::Uri(_) => buffers.get(buffer.index()).map(|b| b.0.as_slice()),
+                gltf::buffer::Source::Bin => {
+                    // For GLB files, data is in the blob
+                    blob
+                }
+                gltf::buffer::Source::Uri(uri) => {
+                    // External URIs are not supported in WASM
+                    // Log the error but try to continue
+                    crate::utils::log_error(&format!("External URI not supported: {}", uri));
+                    None
+                }
             }
         });
         
+        // Read positions (required)
         let positions = reader.read_positions()
-            .context("Missing position attribute")?;
+            .context("Missing position attribute or buffer data not available")?;
         
+        // Read normals if available
         let normals = reader.read_normals();
+        
+        // Read texture coordinates if available
         let tex_coords = reader.read_tex_coords(0).map(|tc| tc.into_f32());
         
         let start_idx = vertices.len();
         
+        // Process each vertex
         for (i, position) in positions.enumerate() {
             let pos = self.apply_transform(position, transform);
             
             let normal = if let Some(ref normals) = normals {
-                normals.clone().nth(i).map(|n| self.apply_transform_normal(n, transform))
+                normals.clone().nth(i)
+                    .map(|n| self.apply_transform_normal(n, transform))
                     .unwrap_or([0.0, 1.0, 0.0])
             } else {
                 [0.0, 1.0, 0.0]
@@ -124,6 +129,7 @@ impl GltfLoader {
             });
         }
         
+        // Read indices
         if let Some(indices) = reader.read_indices() {
             let indices_vec: Vec<u32> = indices.into_u32().collect();
             for chunk in indices_vec.chunks_exact(3) {
@@ -136,6 +142,7 @@ impl GltfLoader {
                 });
             }
         } else {
+            // No indices - assume sequential triangles
             let vertex_count = vertices.len() - start_idx;
             for i in (0..vertex_count).step_by(3) {
                 if i + 2 < vertex_count {
@@ -203,5 +210,24 @@ impl GltfLoader {
 impl Default for GltfLoader {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_transform_identity() {
+        let loader = GltfLoader::new();
+        let identity = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ];
+        let pos = [1.0, 2.0, 3.0];
+        let result = loader.apply_transform(pos, &identity);
+        assert_eq!(result, pos);
     }
 }

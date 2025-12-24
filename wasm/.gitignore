@@ -1,1 +1,21 @@
-target
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo.lock for libraries (keep for applications)
+# Cargo.lock
+
+# wasm-pack output
+/pkg/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

@@ -34,8 +34,15 @@ pub async fn load_model(data: &[u8]) -> Result<JsValue, JsValue> {
             to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()))
         }
         Err(e) => {
-            utils::log_error(&format!("Failed to load model: {}", e));
-            Err(JsValue::from_str(&e.to_string()))
+            let error_msg = format!("Failed to load model: {}", e);
+            utils::log_error(&error_msg);
+            
+            let result = serde_json::json!({
+                "success": false,
+                "error": error_msg
+            });
+            
+            to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()))
         }
     }
 }
@@ -50,47 +57,132 @@ pub async fn generate_pattern(
     
     // Parse configuration
     let config: CrochetConfig = from_value(config_js)
-        .map_err(|e| JsValue::from_str(&format!("Invalid config: {}", e)))?;
+        .map_err(|e| {
+            let error_msg = format!("Invalid config: {}", e);
+            utils::log_error(&error_msg);
+            JsValue::from_str(&error_msg)
+        })?;
     
     // Load model
     let loader = GltfLoader::new();
-    let mut mesh = loader.load_from_bytes(model_data)
-        .map_err(|e| JsValue::from_str(&format!("Failed to load model: {}", e)))?;
+    let mut mesh = match loader.load_from_bytes(model_data) {
+        Ok(m) => m,
+        Err(e) => {
+            let error_msg = format!("Failed to load model: {}. Ensure the file is a valid GLB (binary GLTF) file.", e);
+            utils::log_error(&error_msg);
+            
+            let result = ProcessingResult {
+                success: false,
+                pattern: None,
+                error: Some(error_msg),
+                warnings: vec![],
+            };
+            
+            return to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()));
+        }
+    };
     
     utils::log("Model loaded, processing mesh...");
     
     // Process mesh (simplification, validation, analysis)
     let processor = MeshProcessor::new();
-    processor.process(&mut mesh, &config)
-        .map_err(|e| JsValue::from_str(&format!("Mesh processing failed: {}", e)))?;
+    if let Err(e) = processor.process(&mut mesh, &config) {
+        let error_msg = format!("Mesh processing failed: {}", e);
+        utils::log_error(&error_msg);
+        
+        let result = ProcessingResult {
+            success: false,
+            pattern: None,
+            error: Some(error_msg),
+            warnings: vec![],
+        };
+        
+        return to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()));
+    }
     
     utils::log("Mesh processed, computing parameterization...");
     
     // Parameterize surface (UV mapping)
     let parameterizer = LSCMParameterizer::new();
-    let uv_coords = parameterizer.parameterize(&mesh)
-        .map_err(|e| JsValue::from_str(&format!("Parameterization failed: {}", e)))?;
+    let uv_coords = match parameterizer.parameterize(&mesh) {
+        Ok(coords) => coords,
+        Err(e) => {
+            let error_msg = format!("Parameterization failed: {}. Try simplifying the mesh or checking for topology issues.", e);
+            utils::log_error(&error_msg);
+            
+            let result = ProcessingResult {
+                success: false,
+                pattern: None,
+                error: Some(error_msg),
+                warnings: vec![],
+            };
+            
+            return to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()));
+        }
+    };
     
     utils::log("Parameterization complete, generating stitch grid...");
     
     // Generate stitch grid
     let stitch_generator = StitchGridGenerator::new(config.clone());
-    let stitch_grid = stitch_generator.generate(&mesh, &uv_coords)
-        .map_err(|e| JsValue::from_str(&format!("Stitch generation failed: {}", e)))?;
+    let stitch_grid = match stitch_generator.generate(&mesh, &uv_coords) {
+        Ok(grid) => grid,
+        Err(e) => {
+            let error_msg = format!("Stitch generation failed: {}", e);
+            utils::log_error(&error_msg);
+            
+            let result = ProcessingResult {
+                success: false,
+                pattern: None,
+                error: Some(error_msg),
+                warnings: vec![],
+            };
+            
+            return to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()));
+        }
+    };
     
     utils::log("Stitch grid generated, optimizing pattern...");
     
     // Optimize pattern (row grouping, construction order)
     let optimizer = PatternOptimizer::new(config.clone());
-    let pattern = optimizer.optimize(stitch_grid)
-        .map_err(|e| JsValue::from_str(&format!("Pattern optimization failed: {}", e)))?;
+    let pattern = match optimizer.optimize(stitch_grid) {
+        Ok(p) => p,
+        Err(e) => {
+            let error_msg = format!("Pattern optimization failed: {}", e);
+            utils::log_error(&error_msg);
+            
+            let result = ProcessingResult {
+                success: false,
+                pattern: None,
+                error: Some(error_msg),
+                warnings: vec![],
+            };
+            
+            return to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()));
+        }
+    };
     
     utils::log("Pattern optimized, generating instructions...");
     
     // Generate human-readable instructions
     let instruction_gen = InstructionGenerator::new();
-    let final_pattern = instruction_gen.generate_instructions(pattern)
-        .map_err(|e| JsValue::from_str(&format!("Instruction generation failed: {}", e)))?;
+    let final_pattern = match instruction_gen.generate_instructions(pattern) {
+        Ok(p) => p,
+        Err(e) => {
+            let error_msg = format!("Instruction generation failed: {}", e);
+            utils::log_error(&error_msg);
+            
+            let result = ProcessingResult {
+                success: false,
+                pattern: None,
+                error: Some(error_msg),
+                warnings: vec![],
+            };
+            
+            return to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()));
+        }
+    };
     
     utils::log(&format!(
         "Pattern complete: {} stitches, {} rows",
@@ -115,6 +207,7 @@ pub fn get_mesh_info(data: &[u8]) -> Result<JsValue, JsValue> {
     match loader.load_from_bytes(data) {
         Ok(mesh_data) => {
             let info = serde_json::json!({
+                "success": true,
                 "vertices": mesh_data.vertices.len(),
                 "faces": mesh_data.faces.len(),
                 "bounds": {
@@ -125,7 +218,16 @@ pub fn get_mesh_info(data: &[u8]) -> Result<JsValue, JsValue> {
             });
             to_value(&info).map_err(|e| JsValue::from_str(&e.to_string()))
         }
-        Err(e) => Err(JsValue::from_str(&e.to_string()))
+        Err(e) => {
+            let error_msg = format!("Failed to get mesh info: {}. Ensure the file is a valid GLB file.", e);
+            utils::log_error(&error_msg);
+            
+            let info = serde_json::json!({
+                "success": false,
+                "error": error_msg
+            });
+            to_value(&info).map_err(|e| JsValue::from_str(&e.to_string()))
+        }
     }
 }
 
@@ -157,9 +259,10 @@ pub fn validate_model(data: &[u8]) -> Result<JsValue, JsValue> {
             }
         }
         Err(e) => {
+            let error_msg = format!("Failed to load model for validation: {}. Ensure the file is a valid GLB file.", e);
             let result = serde_json::json!({
                 "valid": false,
-                "error": e.to_string(),
+                "error": error_msg,
             });
             to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()))
         }
