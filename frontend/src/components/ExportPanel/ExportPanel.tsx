@@ -12,7 +12,8 @@ const ExportPanel: React.FC = () => {
   const handleExportPDF = async () => {
     if (!pattern) return;
     setExporting('pdf');
-    const result = exportAsPDF(pattern);
+    // FIX: Added 'await' because exportAsPDF is now an async function
+    const result = await exportAsPDF(pattern);
     if (!result.success) {
       alert(result.error);
     }

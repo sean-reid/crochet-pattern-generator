@@ -13,6 +13,23 @@ impl PatternOptimizer {
     }
 
     pub fn optimize(&self, grid: StitchGrid) -> Result<CrochetPattern> {
+        // 1. Calculate actual physical dimensions from stitches
+        let mut min_x = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        let mut min_z = f32::INFINITY;
+        let mut max_z = f32::NEG_INFINITY;
+
+        for stitch in &grid.stitches {
+            min_x = min_x.min(stitch.position_3d[0]);
+            max_x = max_x.max(stitch.position_3d[0]);
+            min_y = min_y.min(stitch.position_3d[1]);
+            max_y = max_y.max(stitch.position_3d[1]);
+            min_z = min_z.min(stitch.position_3d[2]);
+            max_z = max_z.max(stitch.position_3d[2]);
+        }
+
         // Build row instructions
         let mut row_instructions = Vec::new();
 
@@ -39,7 +56,6 @@ impl PatternOptimizer {
                 }
             }
 
-            // Push final group
             if let Some(st_type) = current_type {
                 stitch_groups.push(StitchGroup {
                     count: current_count,
@@ -61,9 +77,9 @@ impl PatternOptimizer {
             estimated_time: self.estimate_time(grid.stitches.len()),
             yarn_estimate: self.estimate_yarn(grid.stitches.len()),
             dimensions: Dimensions {
-                width: 6.0,  // Placeholder
-                height: 6.0,
-                depth: 2.0,
+                width: (max_x - min_x).abs(),
+                height: (max_y - min_y).abs(),
+                depth: (max_z - min_z).abs(),
             },
         };
 
@@ -79,7 +95,11 @@ impl PatternOptimizer {
         let minutes = (stitch_count as f32 * 0.5).round() as u32;
         let hours = minutes / 60;
         let mins = minutes % 60;
-        format!("{}h {}m", hours, mins)
+        if hours > 0 {
+            format!("{}h {}m", hours, mins)
+        } else {
+            format!("{}m", mins)
+        }
     }
 
     fn estimate_yarn(&self, stitch_count: usize) -> String {

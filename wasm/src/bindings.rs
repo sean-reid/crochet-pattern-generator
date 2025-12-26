@@ -3,8 +3,12 @@ use serde_wasm_bindgen::{from_value, to_value};
 use crate::{CrochetConfig, ProcessingResult, utils};
 use crate::loader::gltf_parser::GltfLoader;
 use crate::mesh::processing::MeshProcessor;
+use crate::mesh::analysis::MeshAnalyzer;
+use crate::mesh::types::{MeshData, Vertex, Face}; // Added types for cutting logic
 use crate::parameterization::lscm::LSCMParameterizer;
+use crate::parameterization::seam_placement::SeamPlacer; // Added for cutting
 use crate::stitch::grid_generator::StitchGridGenerator;
+use crate::stitch::type_classifier::StitchTypeClassifier;
 use crate::pattern::optimizer::PatternOptimizer;
 use crate::instruction::generator::InstructionGenerator;
 
@@ -84,7 +88,7 @@ pub async fn generate_pattern(
     
     utils::log("Model loaded, processing mesh...");
     
-    // Process mesh (simplification, validation, analysis)
+    // 1. Process mesh (simplification, validation, normalization)
     let processor = MeshProcessor::new();
     if let Err(e) = processor.process(&mut mesh, &config) {
         let error_msg = format!("Mesh processing failed: {}", e);
@@ -99,15 +103,30 @@ pub async fn generate_pattern(
         
         return to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()));
     }
+
+    // 2. CRITICAL FIX: Cut Mesh for Flattening
+    // We must find a seam to "open" closed surfaces like spheres or cubes so they can be flattened correctly.
+    utils::log("Placing seams for surface flattening...");
+    let seam_placer = SeamPlacer::new();
+    if let Ok(seam) = seam_placer.place_seam(&mesh) {
+        mesh = apply_topological_cut(&mesh, &seam);
+    }
+
+    // 3. Analyze mesh curvature
+    utils::log("Analyzing surface curvature...");
+    let analyzer = MeshAnalyzer::new();
+    if let Err(e) = analyzer.compute_curvature(&mut mesh) {
+        utils::log_warn(&format!("Curvature analysis partial: {}", e));
+    }
     
-    utils::log("Mesh processed, computing parameterization...");
+    utils::log("Computing surface parameterization (UV mapping)...");
     
-    // Parameterize surface (UV mapping)
+    // 4. Parameterize surface (UV mapping)
     let parameterizer = LSCMParameterizer::new();
     let uv_coords = match parameterizer.parameterize(&mesh) {
         Ok(coords) => coords,
         Err(e) => {
-            let error_msg = format!("Parameterization failed: {}. Try simplifying the mesh or checking for topology issues.", e);
+            let error_msg = format!("Parameterization failed: {}. Try simplifying the mesh.", e);
             utils::log_error(&error_msg);
             
             let result = ProcessingResult {
@@ -121,11 +140,11 @@ pub async fn generate_pattern(
         }
     };
     
-    utils::log("Parameterization complete, generating stitch grid...");
+    utils::log("Generating stitch grid...");
     
-    // Generate stitch grid
+    // 5. Generate initial stitch grid
     let stitch_generator = StitchGridGenerator::new(config.clone());
-    let stitch_grid = match stitch_generator.generate(&mesh, &uv_coords) {
+    let mut stitch_grid = match stitch_generator.generate(&mesh, &uv_coords) {
         Ok(grid) => grid,
         Err(e) => {
             let error_msg = format!("Stitch generation failed: {}", e);
@@ -141,10 +160,15 @@ pub async fn generate_pattern(
             return to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()));
         }
     };
+
+    // 6. Classify stitch types (inc/dec)
+    utils::log("Classifying stitch types...");
+    let classifier = StitchTypeClassifier::new();
+    classifier.classify(&mut stitch_grid, &mesh);
     
-    utils::log("Stitch grid generated, optimizing pattern...");
+    utils::log("Optimizing pattern instructions...");
     
-    // Optimize pattern (row grouping, construction order)
+    // 7. Optimize pattern
     let optimizer = PatternOptimizer::new(config.clone());
     let pattern = match optimizer.optimize(stitch_grid) {
         Ok(p) => p,
@@ -163,9 +187,7 @@ pub async fn generate_pattern(
         }
     };
     
-    utils::log("Pattern optimized, generating instructions...");
-    
-    // Generate human-readable instructions
+    // 8. Generate final instructions
     let instruction_gen = InstructionGenerator::new();
     let final_pattern = match instruction_gen.generate_instructions(pattern) {
         Ok(p) => p,
@@ -198,6 +220,38 @@ pub async fn generate_pattern(
     };
     
     to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// Helper to duplicate vertices along a seam to "open" the mesh for parameterization
+fn apply_topological_cut(mesh: &MeshData, seam: &[(u32, u32)]) -> MeshData {
+    let mut new_vertices = mesh.vertices.clone();
+    let mut new_faces = mesh.faces.clone();
+    let mut vertex_map: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
+
+    for &(v0, v1) in seam {
+        for &v_idx in &[v0, v1] {
+            if !vertex_map.contains_key(&v_idx) {
+                let new_idx = new_vertices.len() as u32;
+                new_vertices.push(mesh.vertices[v_idx as usize].clone());
+                vertex_map.insert(v_idx, new_idx);
+            }
+        }
+
+        // Adjust faces to use duplicated vertices on one side of the cut
+        for face in &mut new_faces {
+            for idx in &mut face.indices {
+                if *idx == v0 {
+                    *idx = *vertex_map.get(&v0).unwrap();
+                }
+            }
+        }
+    }
+
+    MeshData {
+        vertices: new_vertices,
+        faces: new_faces,
+        bounds: mesh.bounds,
+    }
 }
 
 /// Get mesh statistics for display
