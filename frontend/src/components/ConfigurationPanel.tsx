@@ -1,7 +1,5 @@
-import { useState, useEffect } from 'react';
-import { wrap } from 'comlink';
+import { useState, useEffect, useRef } from 'react';
 import type { AmigurumiConfig, ProfileCurve, CrochetPattern } from '../types';
-import type { PatternGeneratorAPI } from '../workers/pattern-worker';
 
 interface Props {
   config: AmigurumiConfig;
@@ -19,20 +17,52 @@ export default function ConfigurationPanel({
   onError,
 }: Props) {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [worker, setWorker] = useState<PatternGeneratorAPI | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+  
+  // Track pending promises to resolve them when the worker responds
+  const pendingRequests = useRef<Map<string, { resolve: Function; reject: Function }>>(new Map());
 
   useEffect(() => {
+    // Initialize the standard Web Worker
     const patternWorker = new Worker(
       new URL('../workers/pattern-worker.ts', import.meta.url),
       { type: 'module' }
     );
-    const api = wrap<PatternGeneratorAPI>(patternWorker);
-    setWorker(api);
+
+    // Set up response listener
+    patternWorker.onmessage = (e) => {
+      const { id, type, payload } = e.data;
+      const request = pendingRequests.current.get(id);
+      
+      if (request) {
+        if (type === 'SUCCESS') {
+          request.resolve(payload);
+        } else {
+          request.reject(new Error(payload));
+        }
+        pendingRequests.current.delete(id);
+      }
+    };
+
+    workerRef.current = patternWorker;
 
     return () => {
       patternWorker.terminate();
     };
   }, []);
+
+  // Helper function to communicate with the worker via Promises
+  const callWorker = (type: string, payload: any): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      if (!workerRef.current) {
+        return reject(new Error('Pattern generator worker not initialized'));
+      }
+      
+      const id = Math.random().toString(36).substring(7);
+      pendingRequests.current.set(id, { resolve, reject });
+      workerRef.current.postMessage({ id, type, payload });
+    });
+  };
 
   const handleInputChange = (field: keyof AmigurumiConfig, value: number) => {
     onChange({ ...config, [field]: value });
@@ -41,7 +71,7 @@ export default function ConfigurationPanel({
   const handleYarnChange = (field: string, value: number) => {
     onChange({
       ...config,
-      yarn: { ...config.yarn, [field]: value },
+      yarn: { ...config.yarn, [field]: value as any },
     });
   };
 
@@ -51,18 +81,14 @@ export default function ConfigurationPanel({
       return;
     }
 
-    if (!worker) {
-      onError('Pattern generator not initialized');
-      return;
-    }
-
     setIsGenerating(true);
 
     try {
-      const pattern = await worker.generatePattern(profile, config);
+      // Send the request to the worker
+      const pattern = await callWorker('GENERATE_PATTERN', { profile, config });
       onGeneratePattern(pattern);
     } catch (error) {
-      onError(`Failed to generate pattern: ${error}`);
+      onError(`Failed to generate pattern: ${(error as Error).message}`);
     } finally {
       setIsGenerating(false);
     }
