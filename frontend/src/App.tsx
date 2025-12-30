@@ -1,135 +1,137 @@
-import React, { useState, useEffect } from 'react';
-import { AppProvider } from './context/AppContext';
-import { ConfigProvider } from './context/ConfigContext';
-import { useWasmWorker } from './hooks/useWasmWorker';
-import FileUploadZone from './components/FileUploadZone';
-import ModelViewer from './components/ModelViewer';
-import ConfigPanel from './components/ConfigPanel';
+import { useState } from 'react';
+import { Pencil, Settings, Eye, Download } from 'lucide-react';
+import DrawingCanvas from './components/DrawingCanvas';
+import ConfigurationPanel from './components/ConfigurationPanel';
 import PatternPreview from './components/PatternPreview';
 import ExportPanel from './components/ExportPanel';
-import { Icon } from './components/common/Icon';
-import { Spinner } from './components/common/Loading';
-import './App.css';
+import type { AppState, ProfileCurve, AmigurumiConfig, CrochetPattern } from './types';
 
-const AppContent: React.FC = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const { initializeWasm, isInitializing, isInitialized, initError } = useWasmWorker();
+type Tab = 'draw' | 'configure' | 'preview' | 'export';
 
-  // Initialize WASM module on app mount
-  useEffect(() => {
-    initializeWasm();
-  }, [initializeWasm]);
+function App() {
+  const [currentTab, setCurrentTab] = useState<Tab>('draw');
+  const [profile, setProfile] = useState<ProfileCurve | null>(null);
+  const [config, setConfig] = useState<AmigurumiConfig>({
+    total_height_cm: 10,
+    start_diameter_cm: 4,
+    end_diameter_cm: 4,
+    yarn: {
+      gauge_stitches_per_cm: 3.0,
+      gauge_rows_per_cm: 3.0,
+      recommended_hook_size_mm: 3.5,
+    },
+  });
+  const [pattern, setPattern] = useState<CrochetPattern | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Show loading screen while WASM initializes
-  if (isInitializing) {
-    return (
-      <div className="app-loading">
-        <Spinner size="large" />
-        <p style={{ marginTop: 'var(--spacing-16)', color: 'var(--color-gray-medium)' }}>
-          Loading WASM module...
-        </p>
-      </div>
-    );
-  }
+  const tabs = [
+    { id: 'draw' as Tab, label: 'Draw', icon: Pencil },
+    { id: 'configure' as Tab, label: 'Configure', icon: Settings },
+    { id: 'preview' as Tab, label: 'Preview', icon: Eye },
+    { id: 'export' as Tab, label: 'Export', icon: Download },
+  ];
 
-  // Show error if WASM failed to load
-  if (initError) {
-    return (
-      <div className="app-loading">
-        <Icon name="AlertCircle" size={48} color="var(--color-burgundy)" />
-        <p style={{ marginTop: 'var(--spacing-16)', color: 'var(--color-burgundy)', fontWeight: 'var(--font-weight-semibold)' }}>
-          Failed to load WASM module
-        </p>
-        <p style={{ marginTop: 'var(--spacing-8)', color: 'var(--color-gray-medium)', fontSize: 'var(--font-size-sm)', maxWidth: '400px', textAlign: 'center' }}>
-          {initError}
-        </p>
-        <p style={{ marginTop: 'var(--spacing-16)', color: 'var(--color-gray-medium)', fontSize: 'var(--font-size-sm)' }}>
-          Make sure the WASM module is built and placed in <code>public/wasm/</code>
-        </p>
-      </div>
-    );
-  }
+  const handleProfileChange = (newProfile: ProfileCurve) => {
+    setProfile(newProfile);
+  };
 
-  // Show warning if WASM not initialized (shouldn't happen but safety check)
-  if (!isInitialized) {
-    return (
-      <div className="app-loading">
-        <Icon name="AlertTriangle" size={48} color="var(--color-amber-soft)" />
-        <p style={{ marginTop: 'var(--spacing-16)', color: 'var(--color-gray-medium)' }}>
-          WASM module not initialized
-        </p>
-      </div>
-    );
-  }
+  const handleConfigChange = (newConfig: AmigurumiConfig) => {
+    setConfig(newConfig);
+  };
+
+  const handlePatternGenerated = (newPattern: CrochetPattern) => {
+    setPattern(newPattern);
+    setError(null);
+    setCurrentTab('preview');
+  };
+
+  const handleError = (errorMessage: string) => {
+    setError(errorMessage);
+  };
 
   return (
-    <div className="app">
-          <header className="app-header">
-            <div className="header-content">
-              <div className="header-left">
-                <Icon name="Scissors" size={28} color="var(--color-terracotta)" />
-                <h1 className="app-title">Crochet Pattern Generator</h1>
-              </div>
-              <button
-                className="menu-button"
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
-              >
-                <Icon name={sidebarOpen ? 'X' : 'Menu'} size={24} />
-              </button>
-            </div>
-          </header>
+    <div className="min-h-screen bg-cream-100">
+      {/* Header */}
+      <header className="bg-white border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <h1 className="text-3xl font-bold text-slate-900">
+            Crochet Pattern Generator
+          </h1>
+          <p className="text-slate-600 mt-2">
+            Create custom amigurumi patterns from your drawings
+          </p>
+        </div>
+      </header>
 
-          <div className="app-layout">
-            {/* Left Sidebar - Configuration */}
-            <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
-              <div className="sidebar-content">
-                <section className="sidebar-section">
-                  <h2 className="sidebar-heading">Upload Model</h2>
-                  <FileUploadZone />
-                </section>
-
-                <section className="sidebar-section">
-                  <h2 className="sidebar-heading">Configuration</h2>
-                  <ConfigPanel />
-                </section>
-              </div>
-            </aside>
-
-            {/* Main Content Area */}
-            <main className="main-content">
-              <div className="viewer-section">
-                <ModelViewer />
-              </div>
-            </main>
-
-            {/* Right Panel - Pattern Output */}
-            <aside className="right-panel">
-              <div className="panel-content">
-                <section className="panel-section">
-                  <h2 className="panel-heading">Pattern Preview</h2>
-                  <PatternPreview />
-                </section>
-
-                <section className="panel-section">
-                  <h2 className="panel-heading">Export</h2>
-                  <ExportPanel />
-                </section>
-              </div>
-            </aside>
+      {/* Navigation Tabs */}
+      <nav className="bg-white border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex space-x-1">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = currentTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setCurrentTab(tab.id)}
+                  className={`
+                    flex items-center gap-2 px-6 py-4 font-medium border-b-2 transition-colors
+                    ${
+                      isActive
+                        ? 'border-terracotta-500 text-terracotta-500'
+                        : 'border-transparent text-slate-600 hover:text-slate-900'
+                    }
+                  `}
+                >
+                  <Icon size={20} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
-      );
-};
+      </nav>
 
-const App: React.FC = () => {
-  return (
-    <AppProvider>
-      <ConfigProvider>
-        <AppContent />
-      </ConfigProvider>
-    </AppProvider>
+      {/* Error Display */}
+      {error && (
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="bg-clay-500 text-white px-6 py-4 rounded-xl">
+            <p className="font-medium">Error</p>
+            <p className="mt-1">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {currentTab === 'draw' && (
+          <DrawingCanvas
+            profile={profile}
+            onChange={handleProfileChange}
+            onError={handleError}
+          />
+        )}
+
+        {currentTab === 'configure' && (
+          <ConfigurationPanel
+            config={config}
+            profile={profile}
+            onChange={handleConfigChange}
+            onGeneratePattern={handlePatternGenerated}
+            onError={handleError}
+          />
+        )}
+
+        {currentTab === 'preview' && (
+          <PatternPreview pattern={pattern} config={config} />
+        )}
+
+        {currentTab === 'export' && (
+          <ExportPanel pattern={pattern} config={config} />
+        )}
+      </main>
+    </div>
   );
-};
+}
 
 export default App;
