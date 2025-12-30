@@ -42,15 +42,23 @@ pub fn generate_pattern(
     let mut rows = Vec::with_capacity(stitch_counts.len());
 
     for (row_idx, &total_stitches) in stitch_counts.iter().enumerate() {
-        let prev_stitches = if row_idx > 0 {
-            stitch_counts[row_idx - 1]
+        let pattern = if row_idx == 0 {
+            // Special case: Row 1 is always the magic circle (all SC)
+            (0..total_stitches)
+                .map(|i| {
+                    let angle = 2.0 * PI * i as f64 / total_stitches as f64;
+                    StitchInstruction {
+                        stitch_type: StitchType::SC,
+                        angular_position: angle,
+                        stitch_index: i,
+                    }
+                })
+                .collect()
         } else {
-            0
+            let prev_stitches = stitch_counts[row_idx - 1];
+            let delta = total_stitches as i32 - prev_stitches as i32;
+            generate_row_pattern(row_idx + 1, total_stitches, delta)
         };
-
-        let delta = total_stitches as i32 - prev_stitches as i32;
-
-        let pattern = generate_row_pattern(row_idx + 1, total_stitches, delta);
 
         rows.push(Row {
             row_number: row_idx + 1,

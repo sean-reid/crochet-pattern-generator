@@ -107,6 +107,7 @@ function App() {
         {currentTab === 'draw' && (
           <DrawingCanvas
             profile={profile}
+	    config={config}
             onChange={handleProfileChange}
             onError={handleError}
           />
