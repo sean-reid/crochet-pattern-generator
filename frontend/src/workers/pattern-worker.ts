@@ -1,3 +1,4 @@
+/// <reference path="../types/wasm.d.ts" />
 import * as Comlink from 'comlink';
 import type { ProfileCurve, AmigurumiConfig, CrochetPattern } from '../types';
 
@@ -20,7 +21,7 @@ async function initWasm(): Promise<void> {
     // Dev: served from public/wasm/ at /wasm/
     // Prod: served from dist/wasm/ at /wasm/
     // Both resolve to /wasm/crochet_wasm.js from the server root
-    const wasmModule = await import('/wasm/crochet_wasm.js');
+    const wasmModule = await import(/* @vite-ignore */ '/wasm/crochet_wasm.js');
     
     console.log('WASM module imported, initializing...');
     

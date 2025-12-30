@@ -40,11 +40,15 @@ export default defineConfig({
   },
   worker: {
     format: 'es',
+    rollupOptions: {
+      external: ['/wasm/crochet_wasm.js'],
+    },
   },
   publicDir: 'public',
   assetsInclude: ['**/*.wasm'],
   build: {
     rollupOptions: {
+      external: ['/wasm/crochet_wasm.js'],
       output: {
         assetFileNames: (assetInfo) => {
           if (assetInfo.name?.endsWith('.wasm')) {
