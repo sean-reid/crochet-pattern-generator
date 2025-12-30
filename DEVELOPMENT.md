@@ -69,6 +69,8 @@ crochet-pattern-generator/
    wasm-pack build crochet-wasm --target web --out-dir ../frontend/public/wasm
    cd ..
    ```
+   
+   Note: The `.cargo/config.toml` enables bulk memory operations needed for modern WASM.
 
 ### Running Development Server
 
@@ -88,7 +90,10 @@ Open browser to `http://localhost:5173`
    ```bash
    cd wasm
    wasm-pack build crochet-wasm --target web --out-dir ../frontend/public/wasm
+   cd ..
    ```
+   
+   The `.cargo/config.toml` handles the necessary WASM features automatically.
 3. Refresh browser (Vite will hot-reload frontend)
 
 #### Frontend Changes
@@ -119,7 +124,7 @@ cargo test -p crochet-wasm
 
 Or manually:
 ```bash
-# Build WASM
+# Build WASM with bulk memory support (configured in .cargo/config.toml)
 cd wasm
 wasm-pack build crochet-wasm --target web --release --out-dir ../frontend/public/wasm
 

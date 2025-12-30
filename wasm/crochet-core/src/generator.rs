@@ -150,7 +150,7 @@ fn validate_config(config: &AmigurumiConfig) -> Result<()> {
 
 /// Generate pattern for a single row
 fn generate_row_pattern(
-    row_number: usize,
+    _row_number: usize,
     total_stitches: usize,
     delta: i32,
 ) -> Vec<StitchInstruction> {

@@ -4,7 +4,7 @@ import DrawingCanvas from './components/DrawingCanvas';
 import ConfigurationPanel from './components/ConfigurationPanel';
 import PatternPreview from './components/PatternPreview';
 import ExportPanel from './components/ExportPanel';
-import type { AppState, ProfileCurve, AmigurumiConfig, CrochetPattern } from './types';
+import type { ProfileCurve, AmigurumiConfig, CrochetPattern } from './types';
 
 type Tab = 'draw' | 'configure' | 'preview' | 'export';
 

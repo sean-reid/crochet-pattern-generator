@@ -78,7 +78,7 @@ export default function PatternPreview({ pattern, config }: Props) {
                   {row.total_stitches} stitches
                 </p>
                 <p className="text-sm text-slate-600 font-mono">
-                  {row.pattern_string ? row.pattern_string() : formatPattern(row)}
+                  {formatPattern(row)}
                 </p>
               </div>
             </div>

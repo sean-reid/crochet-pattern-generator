@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Cursor, Plus, Trash2, Grid3x3 } from 'lucide-react';
+import { MousePointer, Plus, Trash2, Grid3x3 } from 'lucide-react';
 import type { ProfileCurve, Point2D, SplineSegment, DrawingTool } from '../types';
 
 interface Props {
@@ -10,21 +10,43 @@ interface Props {
 
 export default function DrawingCanvas({ profile, onChange, onError }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [points, setPoints] = useState<Point2D[]>([
-    { x: 50, y: 50 },
-    { x: 50, y: 450 },
-  ]);
+  
+  // Initialize points from profile if provided, otherwise use defaults
+  const getInitialPoints = (): Point2D[] => {
+    if (profile && profile.segments.length > 0) {
+      const pointsFromProfile: Point2D[] = [profile.segments[0].start];
+      profile.segments.forEach(seg => pointsFromProfile.push(seg.end));
+      return pointsFromProfile;
+    }
+    return [
+      { x: 0, y: 50 },    // Top magic circle point (fixed at axis)
+      { x: 100, y: 250 },
+      { x: 0, y: 450 },   // Bottom magic circle point (fixed at axis)
+    ];
+  };
+  
+  const [points, setPoints] = useState<Point2D[]>(getInitialPoints());
   const [selectedPoint, setSelectedPoint] = useState<number | null>(null);
   const [tool, setTool] = useState<DrawingTool>('select');
   const [showGrid, setShowGrid] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
+  
+  // Track if we're updating from external profile to avoid circular updates
+  const isUpdatingFromProfile = useRef(false);
+  // Track mouse position to distinguish click from drag
+  const dragStartPos = useRef<{ x: number; y: number } | null>(null);
 
   const canvasWidth = 600;
   const canvasHeight = 500;
+  
+  // Magic circle points are first and last
+  const isFixedPoint = (index: number): boolean => {
+    return index === 0 || index === points.length - 1;
+  };
 
-  // Update profile when points change
+  // Update profile when points change (but not when syncing from profile prop)
   useEffect(() => {
-    if (points.length < 2) return;
+    if (points.length < 2 || isUpdatingFromProfile.current) return;
 
     const segments: SplineSegment[] = [];
     
@@ -57,7 +79,34 @@ export default function DrawingCanvas({ profile, onChange, onError }: Props) {
     };
 
     onChange(newProfile);
-  }, [points]);
+  }, [points, onChange]);
+
+  // Sync points with profile prop changes (when returning to draw tab)
+  // Only if profile has actually changed externally
+  useEffect(() => {
+    if (!profile || profile.segments.length === 0) return;
+    
+    // Extract points from profile
+    const pointsFromProfile: Point2D[] = [profile.segments[0].start];
+    profile.segments.forEach(seg => pointsFromProfile.push(seg.end));
+    
+    // Check if points are actually different to avoid unnecessary updates
+    const pointsChanged = 
+      points.length !== pointsFromProfile.length ||
+      points.some((p, i) => 
+        Math.abs(p.x - pointsFromProfile[i].x) > 0.1 ||
+        Math.abs(p.y - pointsFromProfile[i].y) > 0.1
+      );
+    
+    if (pointsChanged) {
+      isUpdatingFromProfile.current = true;
+      setPoints(pointsFromProfile);
+      // Reset flag after state update completes
+      setTimeout(() => {
+        isUpdatingFromProfile.current = false;
+      }, 0);
+    }
+  }, [profile]); // Deliberately not including points to avoid circular dependency
 
   // Draw canvas
   useEffect(() => {
@@ -91,18 +140,25 @@ export default function DrawingCanvas({ profile, onChange, onError }: Props) {
       }
     }
 
-    // Draw axis line
-    ctx.strokeStyle = '#94A3B8';
-    ctx.lineWidth = 2;
+    // Draw axis line (more prominent)
+    ctx.strokeStyle = '#64748B';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.lineTo(0, canvasHeight);
     ctx.stroke();
+    
+    // Add axis label
+    ctx.fillStyle = '#64748B';
+    ctx.font = 'bold 12px Inter, sans-serif';
+    ctx.fillText('Axis of Rotation', 10, 20);
 
     // Draw curve
     if (points.length >= 2) {
       ctx.strokeStyle = '#C8603F';
       ctx.lineWidth = 3;
+      ctx.setLineDash([]);
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);
       
@@ -123,19 +179,53 @@ export default function DrawingCanvas({ profile, onChange, onError }: Props) {
     // Draw points
     points.forEach((point, index) => {
       const isSelected = index === selectedPoint;
+      const isFixed = isFixedPoint(index);
       
-      ctx.fillStyle = isSelected ? '#C8603F' : '#FFFFFF';
-      ctx.strokeStyle = '#C8603F';
-      ctx.lineWidth = 2;
-      
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, isSelected ? 8 : 6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      // Fixed points (magic circles) are drawn as squares
+      if (isFixed) {
+        ctx.fillStyle = isSelected ? '#C8603F' : '#8B5A3C';
+        ctx.strokeStyle = '#C8603F';
+        ctx.lineWidth = 2;
+        
+        const size = isSelected ? 10 : 8;
+        ctx.fillRect(point.x - size/2, point.y - size/2, size, size);
+        ctx.strokeRect(point.x - size/2, point.y - size/2, size, size);
+      } else {
+        // Regular points are circles
+        ctx.fillStyle = isSelected ? '#C8603F' : '#FFFFFF';
+        ctx.strokeStyle = '#C8603F';
+        ctx.lineWidth = 2;
+        
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, isSelected ? 8 : 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
     });
   }, [points, selectedPoint, showGrid]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Don't process clicks that were actually drags
+    // Check if mouse moved more than 3 pixels from start position
+    if (dragStartPos.current) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const dx = x - dragStartPos.current.x;
+        const dy = y - dragStartPos.current.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        // If moved more than 3 pixels, it was a drag, not a click
+        if (dist > 3) {
+          dragStartPos.current = null;
+          return;
+        }
+      }
+    }
+    dragStartPos.current = null;
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -167,38 +257,55 @@ export default function DrawingCanvas({ profile, onChange, onError }: Props) {
         const dist = Math.sqrt(dx * dx + dy * dy);
         
         if (dist < clickRadius) {
-          if (points.length > 2) {
+          // Cannot delete magic circle points
+          if (isFixedPoint(i)) {
+            onError('Cannot delete magic circle points (top and bottom)');
+            return;
+          }
+          
+          if (points.length > 3) {  // Need at least 3 points: 2 magic circles + 1 middle
             const newPoints = points.filter((_, idx) => idx !== i);
             setPoints(newPoints);
             setSelectedPoint(null);
           } else {
-            onError('Profile must have at least 2 points');
+            onError('Profile must have at least 3 points (including 2 magic circle points)');
           }
           return;
         }
       }
-    } else if (tool === 'select') {
-      // Select point
-      const clickRadius = 15;
-      let found = false;
+    }
+  };
+
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (tool !== 'select') return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Track where drag started
+    dragStartPos.current = { x, y };
+
+    // Select point for dragging
+    const clickRadius = 15;
+    
+    for (let i = 0; i < points.length; i++) {
+      const dx = points[i].x - x;
+      const dy = points[i].y - y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
       
-      for (let i = 0; i < points.length; i++) {
-        const dx = points[i].x - x;
-        const dy = points[i].y - y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        
-        if (dist < clickRadius) {
-          setSelectedPoint(i);
-          setIsDragging(true);
-          found = true;
-          return;
-        }
-      }
-      
-      if (!found) {
-        setSelectedPoint(null);
+      if (dist < clickRadius) {
+        setSelectedPoint(i);
+        setIsDragging(true);
+        return;
       }
     }
+    
+    // Clicked on empty space - deselect
+    setSelectedPoint(null);
   };
 
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -208,17 +315,34 @@ export default function DrawingCanvas({ profile, onChange, onError }: Props) {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = Math.max(0, Math.min(canvasWidth, e.clientX - rect.left));
-    const y = Math.max(0, Math.min(canvasHeight, e.clientY - rect.top));
+    let x = Math.max(0, Math.min(canvasWidth, e.clientX - rect.left));
+    let y = Math.max(0, Math.min(canvasHeight, e.clientY - rect.top));
+    
+    // Fixed points (magic circles) can only move vertically and must stay on axis
+    if (isFixedPoint(selectedPoint)) {
+      x = 0;
+    }
 
     const newPoints = [...points];
     newPoints[selectedPoint] = { x, y };
     setPoints(newPoints);
   };
 
-  const handleCanvasMouseUp = () => {
+  const handleMouseUp = () => {
     setIsDragging(false);
   };
+  
+  // Add global mouse up handler to catch when mouse is released outside canvas
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      setIsDragging(false);
+    };
+    
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => {
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, []);
 
   return (
     <div className="card p-8">
@@ -235,7 +359,7 @@ export default function DrawingCanvas({ profile, onChange, onError }: Props) {
             }`}
             title="Select and move points"
           >
-            <Cursor size={20} />
+            <MousePointer size={20} />
           </button>
           
           <button
@@ -279,7 +403,8 @@ export default function DrawingCanvas({ profile, onChange, onError }: Props) {
       </div>
 
       <p className="text-sm text-slate-600 mb-4">
-        Draw the profile of your amigurumi. The left edge is the axis of rotation.
+        Draw the profile of your amigurumi. The <strong>left edge (axis of rotation)</strong> is where the magic circles will be.
+        The <strong>top and bottom points</strong> (squares) are fixed at the axis and can only move vertically.
         Click to add points, drag to move them.
       </p>
 
@@ -289,15 +414,16 @@ export default function DrawingCanvas({ profile, onChange, onError }: Props) {
           width={canvasWidth}
           height={canvasHeight}
           onClick={handleCanvasClick}
+          onMouseDown={handleCanvasMouseDown}
           onMouseMove={handleCanvasMouseMove}
-          onMouseUp={handleCanvasMouseUp}
-          onMouseLeave={handleCanvasMouseUp}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
           className="cursor-crosshair"
         />
       </div>
 
       <div className="mt-4 text-sm text-slate-600">
-        <p>Points: {points.length}</p>
+        <p>Points: {points.length} (including {isFixedPoint(0) && isFixedPoint(points.length - 1) ? '2' : '0'} fixed magic circle points)</p>
         <p>Selected tool: {tool}</p>
       </div>
     </div>

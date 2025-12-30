@@ -1,0 +1,7 @@
+[target.wasm32-unknown-unknown]
+rustflags = [
+  "-C", "link-arg=--no-entry",
+  "-C", "target-feature=+bulk-memory",
+  "-C", "target-feature=+mutable-globals",
+  "-C", "target-feature=+nontrapping-fptoint",
+]

@@ -33,6 +33,8 @@ A web application that generates optimized crochet patterns for amigurumi from u
    wasm-pack build crochet-wasm --target web --out-dir ../frontend/public/wasm
    cd ..
    ```
+   
+   Note: The `.cargo/config.toml` file enables bulk memory operations automatically.
 
 3. **Install frontend dependencies**:
    ```bash
