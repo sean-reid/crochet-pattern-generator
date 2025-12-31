@@ -86,8 +86,6 @@ pub struct YarnSpec {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AmigurumiConfig {
     pub total_height_cm: f64,
-    pub start_diameter_cm: f64,
-    pub end_diameter_cm: f64,
     pub yarn: YarnSpec,
 }
 
@@ -112,18 +110,31 @@ impl StitchType {
 }
 
 /// Stitch instruction with position
+/// 
+/// Represents an instruction to work into a stitch from the previous row.
+/// In crochet, you work sequentially around the circle, and each instruction
+/// operates on one (or more, for decreases) stitches from the previous row.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StitchInstruction {
     pub stitch_type: StitchType,
-    pub angular_position: f64, // radians from 0 to 2π
-    pub stitch_index: usize,   // position in row (0 to total_stitches-1)
+    /// Angular position in the previous row (radians from 0 to 2π)
+    pub angular_position: f64,
+    /// Index in the instruction sequence (0 to pattern.len()-1)
+    /// This is the position in the previous row where we work
+    pub stitch_index: usize,
 }
 
 /// Single row instruction
+/// 
+/// In crochet, each row is worked INTO the stitches of the previous row.
+/// - `pattern` contains instructions to execute (one per stitch from previous row)
+/// - `total_stitches` is the number of stitches created by executing those instructions
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Row {
     pub row_number: usize,
+    /// Number of stitches CREATED by this row
     pub total_stitches: usize,
+    /// Instructions to execute (length = previous row's stitch count for rows > 1)
     pub pattern: Vec<StitchInstruction>,
 }
 

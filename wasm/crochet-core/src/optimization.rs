@@ -5,6 +5,10 @@ use rand::SeedableRng;
 use std::f64::consts::PI;
 
 /// Optimize stitch placement using simulated annealing
+/// 
+/// In crochet, stitches must be worked sequentially around the circle.
+/// This optimization adjusts WHERE special stitches (INC/DEC) are placed
+/// in the sequence while maintaining the circular order.
 pub fn optimize_stitch_placement(rows: &[Row]) -> Vec<Row> {
     let mut optimized = Vec::with_capacity(rows.len());
     let mut rng = ChaCha8Rng::seed_from_u64(42);
@@ -23,102 +27,122 @@ pub fn optimize_stitch_placement(rows: &[Row]) -> Vec<Row> {
             continue;
         }
 
-        // Extract positions of special stitches as angles
-        let mut angles: Vec<f64> = row
+        // Extract indices of special stitches in the sequence
+        let special_indices: Vec<usize> = row
             .pattern
             .iter()
-            .filter(|s| s.stitch_type != StitchType::SC)
-            .map(|s| s.angular_position)
+            .enumerate()
+            .filter(|(_, s)| s.stitch_type != StitchType::SC)
+            .map(|(i, _)| i)
             .collect();
 
         // Get previous row's special stitch positions for staggering
-        let prev_angles: Vec<f64> = if row_idx > 0 {
-            optimized[row_idx - 1]
+        let prev_special_indices: Vec<usize> = if row_idx > 0 {
+            let prev_row = &optimized[row_idx - 1];
+            prev_row
                 .pattern
                 .iter()
-                .filter(|s| s.stitch_type != StitchType::SC)
-                .map(|s| s.angular_position)
+                .enumerate()
+                .filter(|(_, s)| s.stitch_type != StitchType::SC)
+                .map(|(i, _)| i)
                 .collect()
         } else {
             vec![]
         };
 
-        // Run simulated annealing
-        angles = simulated_annealing(&mut angles, &prev_angles, &mut rng);
+        // Run simulated annealing to find optimal placement
+        let optimized_indices = optimize_special_stitch_indices(
+            &special_indices,
+            &prev_special_indices,
+            row.pattern.len(),
+            &mut rng,
+        );
 
         // Create new pattern with optimized positions
-        let mut new_pattern = Vec::with_capacity(row.total_stitches);
+        let mut new_pattern = vec![StitchType::SC; row.pattern.len()];
+        
+        // Place special stitches at optimized positions
         let mut special_idx = 0;
-
-        for stitch in &row.pattern {
-            if stitch.stitch_type == StitchType::SC {
-                new_pattern.push(stitch.clone());
-            } else {
-                let optimized_angle = angles[special_idx];
-                let optimized_index =
-                    ((optimized_angle / (2.0 * PI)) * row.total_stitches as f64).round() as usize;
-                let optimized_index = optimized_index.min(row.total_stitches - 1);
-
-                new_pattern.push(StitchInstruction {
-                    stitch_type: stitch.stitch_type,
-                    angular_position: optimized_angle,
-                    stitch_index: optimized_index,
-                });
-
-                special_idx += 1;
-            }
+        for &pos in &optimized_indices {
+            new_pattern[pos] = row.pattern[special_indices[special_idx]].stitch_type;
+            special_idx += 1;
         }
 
-        // Sort by angular position
-        new_pattern.sort_by(|a, b| a.angular_position.partial_cmp(&b.angular_position).unwrap());
-
-        // Update stitch indices
-        for (idx, stitch) in new_pattern.iter_mut().enumerate() {
-            stitch.stitch_index = idx;
-        }
+        // Convert to StitchInstruction vec
+        let pattern_vec: Vec<StitchInstruction> = new_pattern
+            .iter()
+            .enumerate()
+            .map(|(i, &stitch_type)| {
+                let angle = 2.0 * PI * i as f64 / new_pattern.len() as f64;
+                StitchInstruction {
+                    stitch_type,
+                    angular_position: angle,
+                    stitch_index: i,
+                }
+            })
+            .collect();
 
         optimized.push(Row {
             row_number: row.row_number,
             total_stitches: row.total_stitches,
-            pattern: new_pattern,
+            pattern: pattern_vec,
         });
     }
 
     optimized
 }
 
-/// Simulated annealing optimization
-fn simulated_annealing(
-    angles: &mut Vec<f64>,
-    prev_angles: &[f64],
+/// Optimize the placement of special stitches within a sequential pattern
+fn optimize_special_stitch_indices(
+    special_indices: &[usize],
+    prev_special_indices: &[usize],
+    pattern_length: usize,
     rng: &mut ChaCha8Rng,
-) -> Vec<f64> {
-    if angles.is_empty() {
+) -> Vec<usize> {
+    if special_indices.is_empty() {
         return vec![];
     }
 
-    let n = angles.len();
-    let mut current = angles.clone();
+    let n = special_indices.len();
+    
+    // Start with evenly spaced positions
+    let spacing = pattern_length as f64 / n as f64;
+    let mut current: Vec<usize> = (0..n)
+        .map(|i| (i as f64 * spacing).round() as usize % pattern_length)
+        .collect();
+    
     let mut best = current.clone();
-    let mut best_energy = energy(&best, prev_angles);
+    let mut best_energy = index_energy(&best, prev_special_indices, pattern_length);
 
     let mut temperature = 1.0;
     let cooling_rate = 0.95;
-    let iterations = 1000;
+    let iterations = 500;
 
     for _ in 0..iterations {
-        // Perturb 1-2 angles
+        // Perturb: swap two positions or shift one
         let mut candidate = current.clone();
-        let num_perturb = if rng.gen_bool(0.5) { 1 } else { 2 };
-
-        for _ in 0..num_perturb.min(n) {
-            let idx = rng.gen_range(0..n);
-            let delta = rng.gen_range(-0.1..0.1);
-            candidate[idx] = (candidate[idx] + delta).rem_euclid(2.0 * PI);
+        
+        if rng.gen_bool(0.5) && n > 1 {
+            // Swap two positions
+            let i = rng.gen_range(0..n);
+            let j = rng.gen_range(0..n);
+            candidate.swap(i, j);
+        } else {
+            // Shift one position
+            let i = rng.gen_range(0..n);
+            let delta = rng.gen_range(-2..=2);
+            candidate[i] = ((candidate[i] as i32 + delta).rem_euclid(pattern_length as i32)) as usize;
         }
 
-        let current_energy = energy(&current, prev_angles);
-        let candidate_energy = energy(&candidate, prev_angles);
+        // Ensure no duplicates
+        candidate.sort_unstable();
+        candidate.dedup();
+        if candidate.len() != n {
+            continue; // Skip if we lost positions due to collision
+        }
+
+        let current_energy = index_energy(&current, prev_special_indices, pattern_length);
+        let candidate_energy = index_energy(&candidate, prev_special_indices, pattern_length);
 
         // Accept or reject
         let delta_e = candidate_energy - current_energy;
@@ -137,41 +161,46 @@ fn simulated_annealing(
     best
 }
 
-/// Energy function: negative log likelihood of uniform distribution
-fn energy(angles: &[f64], prev_angles: &[f64]) -> f64 {
-    let n = angles.len();
+/// Energy function for index-based optimization
+/// Lower energy = better distribution
+fn index_energy(indices: &[usize], prev_indices: &[usize], pattern_length: usize) -> f64 {
+    let n = indices.len();
     if n <= 1 {
         return 0.0;
     }
 
     let mut e = 0.0;
 
-    // Repulsion term: minimize clustering
+    // Repulsion term: prefer even spacing
     for i in 0..n {
         for j in (i + 1)..n {
-            let diff = (angles[j] - angles[i]).abs();
-            let dist = diff.min(2.0 * PI - diff);
-            // Add small epsilon to prevent log(0)
-            e -= (dist.abs() + 1e-10).ln();
+            let dist = circular_distance(indices[i], indices[j], pattern_length);
+            // Penalize clustering
+            e -= (dist as f64 + 1.0).ln();
         }
     }
 
     // Staggering term: offset from previous row
-    if !prev_angles.is_empty() {
+    if !prev_indices.is_empty() {
         let lambda = 0.5; // Weight for staggering constraint
-        for &angle in angles {
-            let mut min_dist = 2.0 * PI;
-            for &prev_angle in prev_angles {
-                let diff = (angle - prev_angle).abs();
-                let dist = diff.min(2.0 * PI - diff);
+        for &idx in indices {
+            let mut min_dist = pattern_length;
+            for &prev_idx in prev_indices {
+                let dist = circular_distance(idx, prev_idx, pattern_length);
                 min_dist = min_dist.min(dist);
             }
             // Penalty if too close to previous row's stitches
-            e += lambda * (-min_dist).exp();
+            e += lambda * (-(min_dist as f64)).exp();
         }
     }
 
     e
+}
+
+/// Calculate circular distance between two indices
+fn circular_distance(a: usize, b: usize, length: usize) -> usize {
+    let diff = if a > b { a - b } else { b - a };
+    diff.min(length - diff)
 }
 
 #[cfg(test)]
@@ -181,23 +210,35 @@ mod tests {
     fn create_test_row(row_number: usize, total_stitches: usize, inc_count: usize) -> Row {
         let mut pattern = Vec::new();
 
-        // Simple uniform distribution
-        let inc_spacing = total_stitches / inc_count;
+        if inc_count == 0 {
+            // All SC
+            for i in 0..total_stitches {
+                let angle = 2.0 * PI * i as f64 / total_stitches as f64;
+                pattern.push(StitchInstruction {
+                    stitch_type: StitchType::SC,
+                    angular_position: angle,
+                    stitch_index: i,
+                });
+            }
+        } else {
+            // Simple uniform distribution
+            let inc_spacing = total_stitches / inc_count;
 
-        for i in 0..total_stitches {
-            let stitch_type = if i % inc_spacing == 0 && pattern.len() < inc_count {
-                StitchType::INC
-            } else {
-                StitchType::SC
-            };
+            for i in 0..total_stitches {
+                let stitch_type = if i % inc_spacing == 0 && pattern.iter().filter(|s| s.stitch_type == StitchType::INC).count() < inc_count {
+                    StitchType::INC
+                } else {
+                    StitchType::SC
+                };
 
-            let angle = 2.0 * PI * i as f64 / total_stitches as f64;
+                let angle = 2.0 * PI * i as f64 / total_stitches as f64;
 
-            pattern.push(StitchInstruction {
-                stitch_type,
-                angular_position: angle,
-                stitch_index: i,
-            });
+                pattern.push(StitchInstruction {
+                    stitch_type,
+                    angular_position: angle,
+                    stitch_index: i,
+                });
+            }
         }
 
         Row {
@@ -234,12 +275,12 @@ mod tests {
 
     #[test]
     fn test_energy_function() {
-        // Evenly spaced angles should have lower energy
-        let even = vec![0.0, PI / 3.0, 2.0 * PI / 3.0, PI, 4.0 * PI / 3.0, 5.0 * PI / 3.0];
-        let clustered = vec![0.0, 0.1, 0.2, PI, PI + 0.1, PI + 0.2];
+        // Evenly spaced indices should have lower energy
+        let even = vec![0, 5, 10, 15, 20, 25];
+        let clustered = vec![0, 1, 2, 15, 16, 17];
 
-        let e_even = energy(&even, &[]);
-        let e_clustered = energy(&clustered, &[]);
+        let e_even = index_energy(&even, &[], 30);
+        let e_clustered = index_energy(&clustered, &[], 30);
 
         assert!(e_even < e_clustered);
     }

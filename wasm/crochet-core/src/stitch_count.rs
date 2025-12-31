@@ -7,17 +7,29 @@ pub fn calculate_stitch_counts(radii: &[f64], config: &AmigurumiConfig) -> Vec<u
         return vec![];
     }
 
+    // Validate input radii
+    for (i, &r) in radii.iter().enumerate() {
+        if r.is_nan() || r.is_infinite() {
+            eprintln!("Warning: Invalid radius at index {}: {}", i, r);
+            return vec![];
+        }
+    }
+
+    // Use radii directly from the drawn curve
+    // No scaling - the drawn curve defines both shape and size
     let mut stitch_counts = Vec::with_capacity(radii.len());
 
     // First row (magic circle)
-    let first_circumference = 2.0 * PI * radii[0];
+    let first_radius = radii[0].max(0.5); // Minimum 0.5cm radius
+    let first_circumference = 2.0 * PI * first_radius;
     let first_stitches = (first_circumference * config.yarn.gauge_stitches_per_cm).round() as usize;
     let first_stitches = first_stitches.max(6); // Minimum 6 stitches for magic circle
     stitch_counts.push(first_stitches);
 
     // Subsequent rows
     for i in 1..radii.len() {
-        let circumference = 2.0 * PI * radii[i];
+        let radius = radii[i].max(0.1); // Minimum 0.1cm radius
+        let circumference = 2.0 * PI * radius;
         let ideal_stitches = circumference * config.yarn.gauge_stitches_per_cm;
         let mut stitches = ideal_stitches.round() as usize;
 
@@ -50,8 +62,6 @@ mod tests {
         let radii = vec![5.0; 10];
         let config = AmigurumiConfig {
             total_height_cm: 10.0,
-            start_diameter_cm: 10.0,
-            end_diameter_cm: 10.0,
             yarn: YarnSpec {
                 gauge_stitches_per_cm: 3.0,
                 gauge_rows_per_cm: 3.0,
@@ -74,8 +84,6 @@ mod tests {
         let radii: Vec<f64> = (0..10).map(|i| 2.0 + i as f64 * 0.5).collect();
         let config = AmigurumiConfig {
             total_height_cm: 10.0,
-            start_diameter_cm: 4.0,
-            end_diameter_cm: 13.0,
             yarn: YarnSpec {
                 gauge_stitches_per_cm: 3.0,
                 gauge_rows_per_cm: 3.0,
@@ -97,8 +105,6 @@ mod tests {
         let radii = vec![0.1, 0.2, 0.3];
         let config = AmigurumiConfig {
             total_height_cm: 1.0,
-            start_diameter_cm: 0.2,
-            end_diameter_cm: 0.6,
             yarn: YarnSpec {
                 gauge_stitches_per_cm: 3.0,
                 gauge_rows_per_cm: 3.0,
@@ -120,8 +126,6 @@ mod tests {
         let radii = vec![2.0, 10.0, 10.0];
         let config = AmigurumiConfig {
             total_height_cm: 3.0,
-            start_diameter_cm: 4.0,
-            end_diameter_cm: 20.0,
             yarn: YarnSpec {
                 gauge_stitches_per_cm: 3.0,
                 gauge_rows_per_cm: 3.0,

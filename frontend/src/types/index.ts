@@ -24,8 +24,6 @@ export interface YarnSpec {
 
 export interface AmigurumiConfig {
   total_height_cm: number;
-  start_diameter_cm: number;
-  end_diameter_cm: number;
   yarn: YarnSpec;
 }
 

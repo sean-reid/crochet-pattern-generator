@@ -74,11 +74,11 @@ export default function PatternPreview({ pattern, config }: Props) {
               </div>
               
               <div className="flex-1">
-                <p className="text-sm font-medium text-slate-900">
-                  {row.total_stitches} stitches
-                </p>
                 <p className="text-sm text-slate-600 font-mono">
                   {formatPattern(row)}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                  ({row.total_stitches} stitches total)
                 </p>
               </div>
             </div>
@@ -109,16 +109,75 @@ function formatPattern(row: any): string {
     return `${row.total_stitches} SC`;
   }
 
-  const counts: Record<string, number> = {};
-  
-  for (const stitch of row.pattern) {
-    const type = stitch.stitch_type;
-    counts[type] = (counts[type] || 0) + 1;
+  // Special case for Row 1 (magic ring)
+  if (row.row_number === 1) {
+    return `${row.total_stitches} SC in magic ring`;
   }
 
-  const parts = Object.entries(counts)
-    .map(([type, count]) => `${count} ${type}`)
-    .join(', ');
+  // Detect repeating patterns for cleaner notation
+  const sequence = detectRepeatingSequence(row.pattern);
+  
+  if (sequence) {
+    return sequence;
+  }
+  
+  // Fall back to grouped consecutive stitches
+  return formatConsecutiveGroups(row.pattern);
+}
 
-  return parts;
+function detectRepeatingSequence(pattern: any[]): string | null {
+  // Try to find a repeating sequence
+  for (let seqLen = 1; seqLen <= pattern.length / 2; seqLen++) {
+    if (pattern.length % seqLen === 0) {
+      const firstSeq = pattern.slice(0, seqLen);
+      let repeats = true;
+      
+      for (let i = seqLen; i < pattern.length; i += seqLen) {
+        const currentSeq = pattern.slice(i, i + seqLen);
+        if (!sequencesEqual(firstSeq, currentSeq)) {
+          repeats = false;
+          break;
+        }
+      }
+      
+      if (repeats && pattern.length / seqLen > 1) {
+        const seqStr = formatConsecutiveGroups(firstSeq);
+        const repeatCount = pattern.length / seqLen;
+        return `[${seqStr}] repeat ${repeatCount} times`;
+      }
+    }
+  }
+  
+  return null;
+}
+
+function sequencesEqual(seq1: any[], seq2: any[]): boolean {
+  if (seq1.length !== seq2.length) return false;
+  for (let i = 0; i < seq1.length; i++) {
+    if (seq1[i].stitch_type !== seq2[i].stitch_type) return false;
+  }
+  return true;
+}
+
+function formatConsecutiveGroups(pattern: any[]): string {
+  if (pattern.length === 0) return '';
+  
+  const groups: string[] = [];
+  let currentType = pattern[0].stitch_type;
+  let count = 1;
+  
+  for (let i = 1; i < pattern.length; i++) {
+    if (pattern[i].stitch_type === currentType) {
+      count++;
+    } else {
+      groups.push(count > 1 ? `${count} ${currentType}` : currentType);
+      currentType = pattern[i].stitch_type;
+      count = 1;
+    }
+  }
+  
+  // Add final group
+  groups.push(count > 1 ? `${count} ${currentType}` : currentType);
+  
+  return groups.join(', ');
 }

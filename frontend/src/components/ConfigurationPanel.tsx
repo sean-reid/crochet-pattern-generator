@@ -115,36 +115,16 @@ export default function ConfigurationPanel({
               max="100"
               step="0.5"
             />
+            <p className="text-xs text-slate-500 mt-1">
+              Height determines the number of rows in your pattern
+            </p>
           </div>
 
-          <div>
-            <label className="label">Start Diameter (cm)</label>
-            <input
-              type="number"
-              value={config.start_diameter_cm}
-              onChange={(e) =>
-                handleInputChange('start_diameter_cm', parseFloat(e.target.value))
-              }
-              className="input"
-              min="0"
-              max="50"
-              step="0.5"
-            />
-          </div>
-
-          <div>
-            <label className="label">End Diameter (cm)</label>
-            <input
-              type="number"
-              value={config.end_diameter_cm}
-              onChange={(e) =>
-                handleInputChange('end_diameter_cm', parseFloat(e.target.value))
-              }
-              className="input"
-              min="0"
-              max="50"
-              step="0.5"
-            />
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-sm text-slate-700">
+              <strong>Note:</strong> Draw your desired shape and size directly on the canvas.
+              The drawn profile defines both the shape and dimensions of your amigurumi.
+            </p>
           </div>
         </div>
       </div>
@@ -227,7 +207,13 @@ export default function ConfigurationPanel({
 
         {!profile && (
           <p className="text-center text-sm text-slate-600 mt-2">
-            Please draw a profile in the Draw tab first
+            Please draw a profile in the Draw tab first. The profile defines the shape of your amigurumi.
+          </p>
+        )}
+        
+        {profile && (
+          <p className="text-center text-xs text-slate-500 mt-2">
+            Tip: Adjust dimensions and yarn specifications to match your desired size and materials.
           </p>
         )}
       </div>

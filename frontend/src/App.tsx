@@ -13,8 +13,6 @@ function App() {
   const [profile, setProfile] = useState<ProfileCurve | null>(null);
   const [config, setConfig] = useState<AmigurumiConfig>({
     total_height_cm: 10,
-    start_diameter_cm: 4,
-    end_diameter_cm: 4,
     yarn: {
       gauge_stitches_per_cm: 3.0,
       gauge_rows_per_cm: 3.0,
@@ -25,10 +23,10 @@ function App() {
   const [error, setError] = useState<string | null>(null);
 
   const tabs = [
-    { id: 'draw' as Tab, label: 'Draw', icon: Pencil },
-    { id: 'configure' as Tab, label: 'Configure', icon: Settings },
-    { id: 'preview' as Tab, label: 'Preview', icon: Eye },
-    { id: 'export' as Tab, label: 'Export', icon: Download },
+    { id: 'draw' as Tab, label: 'Draw', icon: Pencil, disabled: false },
+    { id: 'configure' as Tab, label: 'Configure', icon: Settings, disabled: !profile },
+    { id: 'preview' as Tab, label: 'Preview', icon: Eye, disabled: !pattern },
+    { id: 'export' as Tab, label: 'Export', icon: Download, disabled: !pattern },
   ];
 
   const handleProfileChange = (newProfile: ProfileCurve) => {
@@ -70,16 +68,20 @@ function App() {
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = currentTab === tab.id;
+              const isDisabled = tab.disabled;
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setCurrentTab(tab.id)}
+                  onClick={() => !isDisabled && setCurrentTab(tab.id)}
+                  disabled={isDisabled}
                   className={`
                     flex items-center gap-2 px-6 py-4 font-medium border-b-2 transition-colors
                     ${
                       isActive
                         ? 'border-terracotta-500 text-terracotta-500'
-                        : 'border-transparent text-slate-600 hover:text-slate-900'
+                        : isDisabled
+                        ? 'border-transparent text-slate-300 cursor-not-allowed'
+                        : 'border-transparent text-slate-600 hover:text-slate-900 cursor-pointer'
                     }
                   `}
                 >

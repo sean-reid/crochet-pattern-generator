@@ -66,14 +66,6 @@ pub fn validate_config(config_json: &str) -> std::result::Result<String, String>
         return Err("Height must be positive".to_string());
     }
 
-    if config.start_diameter_cm < 0.0 {
-        return Err("Start diameter must be non-negative".to_string());
-    }
-
-    if config.end_diameter_cm < 0.0 {
-        return Err("End diameter must be non-negative".to_string());
-    }
-
     if config.yarn.gauge_stitches_per_cm <= 0.0 {
         return Err("Gauge stitches per cm must be positive".to_string());
     }
@@ -104,8 +96,6 @@ mod tests {
 
         let config_json = r#"{
             "total_height_cm": 10.0,
-            "start_diameter_cm": 4.0,
-            "end_diameter_cm": 4.0,
             "yarn": {
                 "gauge_stitches_per_cm": 3.0,
                 "gauge_rows_per_cm": 3.0,
