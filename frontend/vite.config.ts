@@ -44,7 +44,7 @@ export default defineConfig({
   worker: {
     format: 'es',
     rollupOptions: {
-      external: ['./wasm/crochet_wasm.js'],
+      external: ['../docs/wasm/crochet_wasm.js'],
     },
   },
   publicDir: 'public',
@@ -53,7 +53,7 @@ export default defineConfig({
     outDir: '../docs', // Output to the root docs folder
     emptyOutDir: true, // Clear the docs folder before building
     rollupOptions: {
-      external: ['./wasm/crochet_wasm.js'],
+      external: ['../docs/wasm/crochet_wasm.js'],
       output: {
         assetFileNames: (assetInfo) => {
           if (assetInfo.name?.endsWith('.wasm')) {
