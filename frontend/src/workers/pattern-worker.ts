@@ -11,7 +11,7 @@ let isInitialized = false;
 async function initWasm(): Promise<void> {
   if (isInitialized) return;
   try {
-    const wasmModule = await import(/* @vite-ignore */ '/wasm/crochet_wasm.js');
+    const wasmModule = await import(/* @vite-ignore */ '../wasm/crochet_wasm.js');
     await wasmModule.default();
     
     generate_pattern_from_json = wasmModule.generate_pattern_from_json;
