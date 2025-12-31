@@ -11,7 +11,7 @@ let isInitialized = false;
 async function initWasm(): Promise<void> {
   if (isInitialized) return;
   try {
-    const wasmUrl = new URL('/wasm/crochet_wasm.js', import.meta.url).href;
+    const wasmUrl = new URL('../wasm/crochet_wasm.js', import.meta.url).href;
     const wasmModule = await import(/* @vite-ignore */ wasmUrl);
     await wasmModule.default();
     
