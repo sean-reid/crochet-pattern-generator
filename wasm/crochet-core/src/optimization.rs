@@ -111,6 +111,12 @@ fn optimize_special_stitch_indices(
         .map(|i| (i as f64 * spacing).round() as usize % pattern_length)
         .collect();
     
+    // If we have a previous row, offset by half spacing for staggering
+    if !prev_special_indices.is_empty() && n > 0 {
+        let offset = (spacing / 2.0).round() as usize;
+        current = current.iter().map(|&pos| (pos + offset) % pattern_length).collect();
+    }
+    
     let mut best = current.clone();
     let mut best_energy = index_energy(&best, prev_special_indices, pattern_length);
 
@@ -130,7 +136,7 @@ fn optimize_special_stitch_indices(
         } else {
             // Shift one position
             let i = rng.gen_range(0..n);
-            let delta = rng.gen_range(-2..=2);
+            let delta = rng.gen_range(-3..=3);
             candidate[i] = ((candidate[i] as i32 + delta).rem_euclid(pattern_length as i32)) as usize;
         }
 
@@ -171,18 +177,18 @@ fn index_energy(indices: &[usize], prev_indices: &[usize], pattern_length: usize
 
     let mut e = 0.0;
 
-    // Repulsion term: prefer even spacing
+    // Repulsion term: prefer even spacing within this row
     for i in 0..n {
         for j in (i + 1)..n {
             let dist = circular_distance(indices[i], indices[j], pattern_length);
-            // Penalize clustering
+            // Penalize clustering - stronger penalty for closer spacing
             e -= (dist as f64 + 1.0).ln();
         }
     }
 
-    // Staggering term: offset from previous row
+    // Staggering term: offset from previous row (stronger weight)
     if !prev_indices.is_empty() {
-        let lambda = 0.5; // Weight for staggering constraint
+        let lambda = 1.0; // Increased from 0.5 for stronger staggering
         for &idx in indices {
             let mut min_dist = pattern_length;
             for &prev_idx in prev_indices {
@@ -190,7 +196,12 @@ fn index_energy(indices: &[usize], prev_indices: &[usize], pattern_length: usize
                 min_dist = min_dist.min(dist);
             }
             // Penalty if too close to previous row's stitches
-            e += lambda * (-(min_dist as f64)).exp();
+            if min_dist < pattern_length / (indices.len() * 2) {
+                // Strong penalty if within "too close" range
+                e += lambda * 10.0 * (-(min_dist as f64)).exp();
+            } else {
+                e += lambda * (-(min_dist as f64 / 2.0)).exp();
+            }
         }
     }
 

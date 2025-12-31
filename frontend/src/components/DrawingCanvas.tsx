@@ -1,16 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { MousePointer, Plus, Trash2, Grid3x3 } from 'lucide-react';
 import * as THREE from 'three';
-import type { ProfileCurve, Point2D, SplineSegment, DrawingTool, AmigurumiConfig } from '../types';
+import type { ProfileCurve, Point2D, SplineSegment, DrawingTool } from '../types';
 
 interface Props {
-  profile: ProfileCurve | null;
-  config: AmigurumiConfig;
-  onChange: (profile: ProfileCurve) => void;
+  initialPoints: Point2D[] | null;
+  onChange: (profile: ProfileCurve, points: Point2D[]) => void;
   onError: (error: string) => void;
 }
 
-export default function DrawingCanvas({ profile, config, onChange, onError }: Props) {
+export default function DrawingCanvas({ initialPoints, onChange, onError }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const preview3DRef = useRef<HTMLCanvasElement>(null);
   
@@ -18,14 +17,11 @@ export default function DrawingCanvas({ profile, config, onChange, onError }: Pr
   const canvasWidth = 600;
   const canvasHeight = 500;
   const marginY = 50; // Offset from top/bottom
-  // Standard scale to fit the configured height into the canvas workspace
-  const pxPerCm = (canvasHeight - marginY * 2) / config.total_height_cm;
-
-  // Helper: Convert CM to Pixels for UI display
-  const toPx = (p: Point2D) => ({
-    x: p.x * pxPerCm,
-    y: p.y * pxPerCm + marginY
-  });
+  
+  // Use FIXED scale for canvas display - don't change when config.height changes!
+  // This ensures drawing stays visually stable
+  const displayHeight = 10; // cm - fixed display height on canvas
+  const pxPerCm = (canvasHeight - marginY * 2) / displayHeight;
 
   // Helper: Convert Pixels to CM for state storage
   const toCm = (p: Point2D) => ({
@@ -34,24 +30,22 @@ export default function DrawingCanvas({ profile, config, onChange, onError }: Pr
   });
 
   const getInitialPoints = (): Point2D[] => {
-    if (profile && profile.segments.length > 0) {
-      // De-normalize: Scale stored CM values back to pixels for the canvas
-      const pts: Point2D[] = [toPx(profile.segments[0].start)];
-      profile.segments.forEach(seg => pts.push(toPx(seg.end)));
-      return pts;
+    // Use initialPoints from parent if available (preserves across tab switches)
+    if (initialPoints && initialPoints.length > 0) {
+      return initialPoints;
     }
-    // Default: symmetric sphere/dome shape
-    // Canvas: 600x500, margins: 50 top/bottom, drawable: 400px (50-450)
+    
+    // Otherwise use default shape
     const centerY = canvasHeight / 2;
     const quarterY = canvasHeight / 4;
     const threeQuarterY = 3 * canvasHeight / 4;
     
     return [
-      { x: 0, y: marginY },              // Top: x=0cm, y=0cm
-      { x: 80, y: quarterY },            // Upper middle: bulge out
-      { x: 100, y: centerY },            // Center: widest point
-      { x: 80, y: threeQuarterY },       // Lower middle: bulge out (symmetric)
-      { x: 0, y: canvasHeight - marginY }, // Bottom: x=0cm, y=10cm
+      { x: 0, y: marginY },
+      { x: 80, y: quarterY },
+      { x: 100, y: centerY },
+      { x: 80, y: threeQuarterY },
+      { x: 0, y: canvasHeight - marginY },
     ];
   };
   
@@ -61,7 +55,7 @@ export default function DrawingCanvas({ profile, config, onChange, onError }: Pr
   const [showGrid, setShowGrid] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   
-  const isUpdatingFromProfile = useRef(false);
+  const lastSentProfile = useRef<ProfileCurve | null>(null);
   const dragStartPos = useRef<{ x: number; y: number } | null>(null);
 
   const isFixedPoint = (index: number): boolean => index === 0 || index === points.length - 1;
@@ -155,9 +149,9 @@ export default function DrawingCanvas({ profile, config, onChange, onError }: Pr
     return segments;
   };
 
-  // Sync state to parent - only when user actually changes points
+  // Sync state to parent - send both profile and control points
   useEffect(() => {
-    if (points.length < 2 || isUpdatingFromProfile.current) return;
+    if (points.length < 2) return;
     
     const segments = getSmoothSegments(points);
     const newProfile: ProfileCurve = {
@@ -166,33 +160,10 @@ export default function DrawingCanvas({ profile, config, onChange, onError }: Pr
       end_radius: segments[segments.length - 1].end.x,
     };
     
-    // Only call onChange if the profile actually changed significantly
-    // This prevents feedback loops from rounding errors
-    if (!profile || 
-        profile.segments.length !== segments.length ||
-        Math.abs(profile.start_radius - newProfile.start_radius) > 0.01 ||
-        Math.abs(profile.end_radius - newProfile.end_radius) > 0.01) {
-      onChange(newProfile);
-    }
-  }, [points, config.total_height_cm]);
-
-  // Sync points if profile changes externally (Tab switching)
-  useEffect(() => {
-    if (!profile || profile.segments.length === 0) return;
-    
-    const ptsFromProfile: Point2D[] = [toPx(profile.segments[0].start)];
-    profile.segments.forEach(seg => ptsFromProfile.push(toPx(seg.end)));
-    
-    // Use larger tolerance to prevent jitter from rounding errors
-    const pointsChanged = points.length !== ptsFromProfile.length ||
-      points.some((p, i) => Math.abs(p.x - ptsFromProfile[i].x) > 2.0 || Math.abs(p.y - ptsFromProfile[i].y) > 2.0);
-    
-    if (pointsChanged) {
-      isUpdatingFromProfile.current = true;
-      setPoints(ptsFromProfile);
-      setTimeout(() => { isUpdatingFromProfile.current = false; }, 0);
-    }
-  }, [profile, config.total_height_cm]);
+    // Send both profile and the actual control points
+    lastSentProfile.current = newProfile;
+    onChange(newProfile, points);
+  }, [points]);
 
   // Canvas Drawing
   useEffect(() => {
@@ -591,6 +562,8 @@ export default function DrawingCanvas({ profile, config, onChange, onError }: Pr
         </div>
         <p className="text-xs text-slate-500 mt-3">
           Draw the profile curve (one side only). The shape will be rotated 360° around the vertical axis.
+          <br />
+          <strong>Canvas scale:</strong> Fixed at 10cm height for easy drawing. The height config controls row count, not canvas display.
         </p>
       </div>
 

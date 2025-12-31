@@ -121,6 +121,10 @@ pub fn generate_pattern(
 
     // Step 2: Get radius at each row height by evaluating the curve directly
     let mut row_radii = Vec::with_capacity(num_rows);
+    
+    // Calculate magic ring radius (approximately 0.5-0.8cm depending on stitch count)
+    let magic_ring_radius = 0.6; // cm - physical radius of the magic ring itself
+    
     for row_idx in 0..num_rows {
         // Map from config height to curve height
         let config_height = if row_idx == num_rows - 1 {
@@ -131,16 +135,27 @@ pub fn generate_pattern(
         
         // Scale to curve's coordinate system
         let curve_y = curve_min_y + (config_height / config.total_height_cm) * curve_height;
-        let radius = find_radius_at_height(curve, curve_y);
+        let curve_radius = find_radius_at_height(curve, curve_y);
+        
+        // Adjust for magic ring and closing
+        let adjusted_radius = if row_idx == 0 {
+            // First row: Add magic ring radius (stitches sit outside the ring)
+            curve_radius + magic_ring_radius
+        } else if row_idx == num_rows - 1 {
+            // Last row: Actual curve radius (closing, no offset needed)
+            curve_radius.max(0.3) // Ensure it's smaller than first row
+        } else {
+            curve_radius
+        };
         
         // Validate radius is reasonable
-        if radius.is_nan() || radius.is_infinite() {
+        if adjusted_radius.is_nan() || adjusted_radius.is_infinite() {
             return Err(PatternError::InternalError(
-                format!("Invalid radius calculated at height {}: {}", config_height, radius),
+                format!("Invalid radius calculated at height {}: {}", config_height, adjusted_radius),
             ));
         }
         
-        row_radii.push(radius);
+        row_radii.push(adjusted_radius);
     }
 
     if row_radii.is_empty() {

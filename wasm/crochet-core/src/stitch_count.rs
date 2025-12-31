@@ -33,9 +33,16 @@ pub fn calculate_stitch_counts(radii: &[f64], config: &AmigurumiConfig) -> Vec<u
         let ideal_stitches = circumference * config.yarn.gauge_stitches_per_cm;
         let mut stitches = ideal_stitches.round() as usize;
 
-        // Enforce maximum change constraint (16.7% per row)
+        // Enforce maximum change constraint (16.7% per row normally)
         let prev_stitches = stitch_counts[i - 1];
-        let max_delta = (prev_stitches as f64 / 6.0).max(6.0) as usize;
+        let mut max_delta = (prev_stitches as f64 / 6.0).max(6.0) as usize;
+        
+        // Relax constraint for final rows to allow closing
+        let rows_remaining = radii.len() - i;
+        if rows_remaining <= 5 {
+            // Last 5 rows: allow faster decreases to close properly
+            max_delta = (prev_stitches as f64 / 4.0).max(8.0) as usize; // 25% instead of 16.7%
+        }
 
         if stitches > prev_stitches + max_delta {
             stitches = prev_stitches + max_delta;

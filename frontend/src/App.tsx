@@ -4,13 +4,14 @@ import DrawingCanvas from './components/DrawingCanvas';
 import ConfigurationPanel from './components/ConfigurationPanel';
 import PatternPreview from './components/PatternPreview';
 import ExportPanel from './components/ExportPanel';
-import type { ProfileCurve, AmigurumiConfig, CrochetPattern } from './types';
+import type { ProfileCurve, AmigurumiConfig, CrochetPattern, Point2D } from './types';
 
 type Tab = 'draw' | 'configure' | 'preview' | 'export';
 
 function App() {
   const [currentTab, setCurrentTab] = useState<Tab>('draw');
   const [profile, setProfile] = useState<ProfileCurve | null>(null);
+  const [controlPoints, setControlPoints] = useState<Point2D[] | null>(null);
   const [config, setConfig] = useState<AmigurumiConfig>({
     total_height_cm: 10,
     yarn: {
@@ -29,8 +30,9 @@ function App() {
     { id: 'export' as Tab, label: 'Export', icon: Download, disabled: !pattern },
   ];
 
-  const handleProfileChange = (newProfile: ProfileCurve) => {
+  const handleProfileChange = (newProfile: ProfileCurve, newPoints: Point2D[]) => {
     setProfile(newProfile);
+    setControlPoints(newPoints);
   };
 
   const handleConfigChange = (newConfig: AmigurumiConfig) => {
@@ -108,8 +110,7 @@ function App() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         {currentTab === 'draw' && (
           <DrawingCanvas
-            profile={profile}
-	    config={config}
+            initialPoints={controlPoints}
             onChange={handleProfileChange}
             onError={handleError}
           />
