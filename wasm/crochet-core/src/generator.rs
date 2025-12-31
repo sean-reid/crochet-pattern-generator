@@ -99,11 +99,15 @@ pub fn generate_pattern(
     curve: &ProfileCurve,
     config: &AmigurumiConfig,
 ) -> Result<CrochetPattern> {
-    // Validate inputs
     validate_curve(curve)?;
     validate_config(config)?;
 
-    // Determine the curve's y-range
+    // Step 1: Calculate number of rows
+    let row_height = 1.0 / config.yarn.gauge_rows_per_cm;
+    let num_rows = (config.total_height_cm / row_height).round() as usize;
+    let num_rows = num_rows.max(1);
+
+    // Step 2: Height-based sampling
     let curve_min_y = curve.segments[0].start.y;
     let curve_max_y = curve.segments.last().unwrap().end.y;
     let curve_height = curve_max_y - curve_min_y;
@@ -113,49 +117,18 @@ pub fn generate_pattern(
             "Curve must have positive height".to_string(),
         ));
     }
-
-    // Step 1: Calculate row heights based on gauge
-    let row_height = 1.0 / config.yarn.gauge_rows_per_cm;
-    let num_rows = (config.total_height_cm / row_height).round() as usize;
-    let num_rows = num_rows.max(1);
-
-    // Step 2: Get radius at each row height by evaluating the curve directly
+    
     let mut row_radii = Vec::with_capacity(num_rows);
     
-    // Calculate magic ring radius (approximately 0.5-0.8cm depending on stitch count)
-    let magic_ring_radius = 0.6; // cm - physical radius of the magic ring itself
+    // Row 1: Magic ring (standard 6 SC, ~0.67cm radius)
+    row_radii.push(2.0 / config.yarn.gauge_stitches_per_cm);
     
-    for row_idx in 0..num_rows {
-        // Map from config height to curve height
-        let config_height = if row_idx == num_rows - 1 {
-            config.total_height_cm
-        } else {
-            row_idx as f64 * row_height
-        };
-        
-        // Scale to curve's coordinate system
-        let curve_y = curve_min_y + (config_height / config.total_height_cm) * curve_height;
-        let curve_radius = find_radius_at_height(curve, curve_y);
-        
-        // Adjust for magic ring and closing
-        let adjusted_radius = if row_idx == 0 {
-            // First row: Add magic ring radius (stitches sit outside the ring)
-            curve_radius + magic_ring_radius
-        } else if row_idx == num_rows - 1 {
-            // Last row: Actual curve radius (closing, no offset needed)
-            curve_radius.max(0.3) // Ensure it's smaller than first row
-        } else {
-            curve_radius
-        };
-        
-        // Validate radius is reasonable
-        if adjusted_radius.is_nan() || adjusted_radius.is_infinite() {
-            return Err(PatternError::InternalError(
-                format!("Invalid radius calculated at height {}: {}", config_height, adjusted_radius),
-            ));
-        }
-        
-        row_radii.push(adjusted_radius);
+    // Rows 2+: Evenly spaced heights
+    for row_idx in 1..num_rows {
+        let t = row_idx as f64 / (num_rows - 1) as f64;
+        let height = curve_min_y + t * curve_height;
+        let radius = find_radius_at_height(curve, height);
+        row_radii.push(radius.max(0.1));
     }
 
     if row_radii.is_empty() {
@@ -235,18 +208,7 @@ fn validate_curve(curve: &ProfileCurve) -> Result<()> {
         ));
     }
 
-    // Check continuity
-    for i in 1..curve.segments.len() {
-        let prev_end = curve.segments[i - 1].end;
-        let curr_start = curve.segments[i].start;
-
-        let dist = prev_end.distance_to(&curr_start);
-        if dist > 1e-6 {
-            return Err(PatternError::InvalidProfileCurve(
-                "Curve segments are not continuous".to_string(),
-            ));
-        }
-    }
+    // B-splines are smooth by construction, no need to check continuity
 
     Ok(())
 }

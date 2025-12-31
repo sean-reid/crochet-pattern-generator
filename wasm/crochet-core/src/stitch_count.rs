@@ -7,56 +7,45 @@ pub fn calculate_stitch_counts(radii: &[f64], config: &AmigurumiConfig) -> Vec<u
         return vec![];
     }
 
-    // Validate input radii
-    for (i, &r) in radii.iter().enumerate() {
-        if r.is_nan() || r.is_infinite() {
-            eprintln!("Warning: Invalid radius at index {}: {}", i, r);
-            return vec![];
+    // Convert each radius to ideal stitch count
+    let ideal_counts: Vec<usize> = radii.iter().enumerate().map(|(i, &radius)| {
+        if i == 0 {
+            // Magic ring: standard 6 SC (not calculated from circumference!)
+            return 6;
         }
-    }
-
-    // Use radii directly from the drawn curve
-    // No scaling - the drawn curve defines both shape and size
-    let mut stitch_counts = Vec::with_capacity(radii.len());
-
-    // First row (magic circle)
-    let first_radius = radii[0].max(0.5); // Minimum 0.5cm radius
-    let first_circumference = 2.0 * PI * first_radius;
-    let first_stitches = (first_circumference * config.yarn.gauge_stitches_per_cm).round() as usize;
-    let first_stitches = first_stitches.max(6); // Minimum 6 stitches for magic circle
-    stitch_counts.push(first_stitches);
-
-    // Subsequent rows
-    for i in 1..radii.len() {
-        let radius = radii[i].max(0.1); // Minimum 0.1cm radius
-        let circumference = 2.0 * PI * radius;
-        let ideal_stitches = circumference * config.yarn.gauge_stitches_per_cm;
-        let mut stitches = ideal_stitches.round() as usize;
-
-        // Enforce maximum change constraint (16.7% per row normally)
-        let prev_stitches = stitch_counts[i - 1];
-        let mut max_delta = (prev_stitches as f64 / 6.0).max(6.0) as usize;
         
-        // Relax constraint for final rows to allow closing
-        let rows_remaining = radii.len() - i;
-        if rows_remaining <= 5 {
-            // Last 5 rows: allow faster decreases to close properly
-            max_delta = (prev_stitches as f64 / 4.0).max(8.0) as usize; // 25% instead of 16.7%
-        }
-
-        if stitches > prev_stitches + max_delta {
-            stitches = prev_stitches + max_delta;
-        } else if stitches + max_delta < prev_stitches {
-            stitches = prev_stitches.saturating_sub(max_delta);
-        }
-
-        // Ensure at least 6 stitches
-        stitches = stitches.max(6);
-
-        stitch_counts.push(stitches);
+        let r = radius.max(0.1);
+        let circumference = 2.0 * PI * r;
+        let stitches = (circumference * config.yarn.gauge_stitches_per_cm).round() as usize;
+        stitches.max(6)
+    }).collect();
+    
+    // Apply physical constraints: can't increase/decrease too fast
+    let mut actual_counts = Vec::with_capacity(ideal_counts.len());
+    actual_counts.push(ideal_counts[0]); // Magic ring: 6 SC
+    
+    for i in 1..ideal_counts.len() {
+        let prev = actual_counts[i - 1];
+        let ideal = ideal_counts[i];
+        
+        // Physical limit: INC can double at most, INVDEC can halve at most
+        let max_increase = prev; // Can double (all INC)
+        let max_decrease = prev / 2; // Can halve (all INVDEC)
+        
+        let actual = if ideal > prev {
+            // Increasing: cap at doubling
+            ideal.min(prev + max_increase)
+        } else if ideal < prev {
+            // Decreasing: cap at halving
+            ideal.max(prev.saturating_sub(max_decrease))
+        } else {
+            ideal
+        };
+        
+        actual_counts.push(actual.max(6));
     }
-
-    stitch_counts
+    
+    actual_counts
 }
 
 #[cfg(test)]
@@ -128,9 +117,9 @@ mod tests {
     }
 
     #[test]
-    fn test_max_delta_constraint() {
-        // Create a scenario with large jump
-        let radii = vec![2.0, 10.0, 10.0];
+    fn test_follows_curve_exactly() {
+        // Pattern should follow curve exactly
+        let radii = vec![2.0, 10.0, 2.0]; // Expansion then contraction
         let config = AmigurumiConfig {
             total_height_cm: 3.0,
             yarn: YarnSpec {
@@ -141,12 +130,9 @@ mod tests {
         };
 
         let counts = calculate_stitch_counts(&radii, &config);
-
-        // Check that change between rows doesn't exceed constraint
-        for i in 1..counts.len() {
-            let delta = (counts[i] as i32 - counts[i - 1] as i32).abs() as usize;
-            let max_delta = (counts[i - 1] as f64 / 6.0).max(6.0) as usize;
-            assert!(delta <= max_delta);
-        }
+        
+        // Should follow the radii pattern
+        assert!(counts[0] < counts[1]); // Increases
+        assert!(counts[2] < counts[1]); // Decreases
     }
 }

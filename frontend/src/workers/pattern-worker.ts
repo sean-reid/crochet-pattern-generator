@@ -48,13 +48,19 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
           config: AmigurumiConfig 
         };
         
-        const resultJson = generate_pattern_from_json(
-          JSON.stringify(profile),
-          JSON.stringify(config)
-        );
-        const pattern: CrochetPattern = JSON.parse(resultJson);
-        
-        self.postMessage({ id, type: 'SUCCESS', payload: pattern });
+        // WASM function returns Result<String, String>
+        try {
+          const resultJson = generate_pattern_from_json(
+            JSON.stringify(profile),
+            JSON.stringify(config)
+          );
+          const pattern: CrochetPattern = JSON.parse(resultJson);
+          
+          self.postMessage({ id, type: 'SUCCESS', payload: pattern });
+        } catch (wasmError) {
+          // WASM threw an error
+          throw new Error(`Pattern generation failed: ${wasmError}`);
+        }
         break;
       }
 

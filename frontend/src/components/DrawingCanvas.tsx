@@ -185,6 +185,25 @@ export default function DrawingCanvas({ initialPoints, onChange, onError }: Prop
     ctx.strokeStyle = '#64748B';
     ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, canvasHeight); ctx.stroke();
+    
+    // Draw magic ring indicator at bottom
+    if (points.length >= 2) {
+      const magicRingRadiusCm = 2.0 / 3.0; // Assume default gauge of 3 st/cm
+      const magicRingRadiusPx = magicRingRadiusCm * pxPerCm;
+      
+      ctx.strokeStyle = '#9CA3AF';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.arc(0, points[0].y, magicRingRadiusPx, 0, Math.PI / 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      
+      // Label
+      ctx.fillStyle = '#6B7280';
+      ctx.font = '11px sans-serif';
+      ctx.fillText('magic ring', magicRingRadiusPx + 5, points[0].y - 5);
+    }
 
     if (points.length >= 2) {
       ctx.strokeStyle = '#C8603F';
