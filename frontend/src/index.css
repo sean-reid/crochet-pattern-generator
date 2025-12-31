@@ -6,10 +6,22 @@
   body {
     @apply bg-cream-100 text-slate-900;
     font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   * {
     @apply transition-colors duration-150;
+  }
+  
+  /* Prevent zoom on input focus on mobile */
+  @media screen and (max-width: 768px) {
+    input[type="number"],
+    input[type="text"],
+    textarea,
+    select {
+      font-size: 16px;
+    }
   }
 }
 
@@ -19,24 +31,45 @@
   }
 
   .btn-primary {
-    @apply px-6 py-3 bg-terracotta-500 text-white rounded-xl font-semibold 
+    @apply px-4 sm:px-6 py-2.5 sm:py-3 bg-terracotta-500 text-white rounded-xl font-semibold text-sm sm:text-base
            hover:bg-terracotta-600 active:bg-terracotta-600
            focus:outline-none focus:ring-2 focus:ring-terracotta-500 focus:ring-offset-2;
   }
 
   .btn-secondary {
-    @apply px-6 py-3 bg-white border border-slate-300 rounded-xl font-semibold
+    @apply px-4 sm:px-6 py-2.5 sm:py-3 bg-white border border-slate-300 rounded-xl font-semibold text-sm sm:text-base
            text-slate-700 hover:bg-slate-50 active:bg-slate-100
            focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2;
   }
 
   .input {
-    @apply w-full px-4 py-2.5 rounded-lg bg-white border border-slate-300
+    @apply w-full px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg bg-white border border-slate-300 text-sm sm:text-base
            text-slate-900 placeholder-slate-400
            focus:outline-none focus:ring-2 focus:ring-terracotta-500 focus:border-transparent;
   }
 
   .label {
-    @apply block text-sm font-medium text-slate-700 mb-2;
+    @apply block text-xs sm:text-sm font-medium text-slate-700 mb-2;
+  }
+  
+  /* Touch-friendly button size */
+  .touch-manipulation {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer utilities {
+  /* Prevent text selection on interactive elements */
+  .no-select {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+  
+  /* Smooth scrolling for mobile */
+  .smooth-scroll {
+    -webkit-overflow-scrolling: touch;
   }
 }

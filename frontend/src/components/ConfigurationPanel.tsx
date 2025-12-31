@@ -95,9 +95,9 @@ export default function ConfigurationPanel({
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <div className="card p-8">
-        <h2 className="text-xl font-semibold text-slate-900 mb-6">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+      <div className="card p-4 sm:p-6 lg:p-8">
+        <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4 sm:mb-6">
           Amigurumi Dimensions
         </h2>
 
@@ -120,8 +120,8 @@ export default function ConfigurationPanel({
             </p>
           </div>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-sm text-slate-700">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+            <p className="text-xs sm:text-sm text-slate-700">
               <strong>Note:</strong> Draw your desired shape and size directly on the canvas.
               The drawn profile defines both the shape and dimensions of your amigurumi.
             </p>
@@ -129,8 +129,8 @@ export default function ConfigurationPanel({
         </div>
       </div>
 
-      <div className="card p-8">
-        <h2 className="text-xl font-semibold text-slate-900 mb-6">
+      <div className="card p-4 sm:p-6 lg:p-8">
+        <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4 sm:mb-6">
           Yarn Specifications
         </h2>
 
@@ -198,7 +198,7 @@ export default function ConfigurationPanel({
         <button
           onClick={handleGenerate}
           disabled={isGenerating || !profile}
-          className={`w-full btn-primary ${
+          className={`w-full btn-primary touch-manipulation ${
             isGenerating || !profile ? 'opacity-50 cursor-not-allowed' : ''
           }`}
         >
@@ -206,7 +206,7 @@ export default function ConfigurationPanel({
         </button>
 
         {!profile && (
-          <p className="text-center text-sm text-slate-600 mt-2">
+          <p className="text-center text-xs sm:text-sm text-slate-600 mt-2">
             Please draw a profile in the Draw tab first. The profile defines the shape of your amigurumi.
           </p>
         )}

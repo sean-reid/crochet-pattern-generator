@@ -12,16 +12,17 @@ interface Props {
 export default function DrawingCanvas({ initialPoints, onChange, onError }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const preview3DRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  // Use state for canvas dimensions that respond to container size
+  const [canvasDimensions, setCanvasDimensions] = useState({ width: 600, height: 500 });
   
   // Constants for consistent scaling
-  const canvasWidth = 600;
-  const canvasHeight = 500;
   const marginY = 50; // Offset from top/bottom
   
   // Use FIXED scale for canvas display - don't change when config.height changes!
-  // This ensures drawing stays visually stable
   const displayHeight = 10; // cm - fixed display height on canvas
-  const pxPerCm = (canvasHeight - marginY * 2) / displayHeight;
+  const pxPerCm = (canvasDimensions.height - marginY * 2) / displayHeight;
 
   // Helper: Convert Pixels to CM for state storage
   const toCm = (p: Point2D) => ({
@@ -29,23 +30,43 @@ export default function DrawingCanvas({ initialPoints, onChange, onError }: Prop
     y: (p.y - marginY) / pxPerCm
   });
 
+  // Set up responsive canvas sizing - only runs once on mount and on window resize
+  useEffect(() => {
+    const updateCanvasSize = () => {
+      if (containerRef.current) {
+        const containerWidth = containerRef.current.clientWidth;
+        // Set canvas width based on container, maintaining aspect ratio
+        const maxWidth = Math.min(containerWidth - 32, 600); // 32px for padding
+        const width = Math.max(300, maxWidth); // Minimum 300px
+        const height = Math.round(width * (500 / 600)); // Maintain aspect ratio
+        
+        setCanvasDimensions({ width, height });
+      }
+    };
+    
+    updateCanvasSize();
+    window.addEventListener('resize', updateCanvasSize);
+    return () => window.removeEventListener('resize', updateCanvasSize);
+  }, []); // Only run on mount/unmount
+
   const getInitialPoints = (): Point2D[] => {
     // Use initialPoints from parent if available (preserves across tab switches)
     if (initialPoints && initialPoints.length > 0) {
       return initialPoints;
     }
     
-    // Otherwise use default shape
-    const centerY = canvasHeight / 2;
-    const quarterY = canvasHeight / 4;
-    const threeQuarterY = 3 * canvasHeight / 4;
+    // Otherwise use default shape - scale to current canvas size
+    const { width, height } = canvasDimensions;
+    const centerY = height / 2;
+    const quarterY = height / 4;
+    const threeQuarterY = 3 * height / 4;
     
     return [
       { x: 0, y: marginY },
-      { x: 80, y: quarterY },
-      { x: 100, y: centerY },
-      { x: 80, y: threeQuarterY },
-      { x: 0, y: canvasHeight - marginY },
+      { x: width * 0.13, y: quarterY },
+      { x: width * 0.17, y: centerY },
+      { x: width * 0.13, y: threeQuarterY },
+      { x: 0, y: height - marginY },
     ];
   };
   
@@ -150,27 +171,39 @@ export default function DrawingCanvas({ initialPoints, onChange, onError }: Prop
   };
 
   // Sync state to parent - send both profile and control points
-  useEffect(() => {
-    if (points.length < 2) return;
+  // CRITICAL: Use useCallback to prevent recreation on every render
+  const sendProfileToParent = useRef((pts: Point2D[]) => {
+    if (pts.length < 2) return;
     
-    const segments = getSmoothSegments(points);
+    const segments = getSmoothSegments(pts);
     const newProfile: ProfileCurve = {
       segments,
       start_radius: segments[0].start.x,
       end_radius: segments[segments.length - 1].end.x,
     };
     
-    // Send both profile and the actual control points
-    lastSentProfile.current = newProfile;
-    onChange(newProfile, points);
-  }, [points]);
+    // Only send if profile actually changed
+    const profileStr = JSON.stringify(newProfile);
+    const lastStr = lastSentProfile.current ? JSON.stringify(lastSentProfile.current) : '';
+    
+    if (profileStr !== lastStr) {
+      lastSentProfile.current = newProfile;
+      onChange(newProfile, pts);
+    }
+  });
 
-  // Canvas Drawing
+  useEffect(() => {
+    sendProfileToParent.current(points);
+  }, [points]); // Only depend on points, not onChange
+
+  // Canvas Drawing - separated from point updates to prevent loops
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    const { width: canvasWidth, height: canvasHeight } = canvasDimensions;
 
     ctx.fillStyle = '#FEFDFB';
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
@@ -178,13 +211,27 @@ export default function DrawingCanvas({ initialPoints, onChange, onError }: Prop
     if (showGrid) {
       ctx.strokeStyle = '#E8E1D4';
       ctx.lineWidth = 1;
-      for (let x = 0; x <= canvasWidth; x += 50) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvasHeight); ctx.stroke(); }
-      for (let y = 0; y <= canvasHeight; y += 50) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvasWidth, y); ctx.stroke(); }
+      const gridSize = 50;
+      for (let x = 0; x <= canvasWidth; x += gridSize) { 
+        ctx.beginPath(); 
+        ctx.moveTo(x, 0); 
+        ctx.lineTo(x, canvasHeight); 
+        ctx.stroke(); 
+      }
+      for (let y = 0; y <= canvasHeight; y += gridSize) { 
+        ctx.beginPath(); 
+        ctx.moveTo(0, y); 
+        ctx.lineTo(canvasWidth, y); 
+        ctx.stroke(); 
+      }
     }
 
     ctx.strokeStyle = '#64748B';
     ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, canvasHeight); ctx.stroke();
+    ctx.beginPath(); 
+    ctx.moveTo(0, 0); 
+    ctx.lineTo(0, canvasHeight); 
+    ctx.stroke();
     
     // Draw magic ring indicator at bottom
     if (points.length >= 2) {
@@ -264,20 +311,48 @@ export default function DrawingCanvas({ initialPoints, onChange, onError }: Prop
         ctx.beginPath(); ctx.arc(point.x, point.y, isSelected ? 8 : 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       }
     });
-  }, [points, selectedPoint, showGrid]);
+  }, [points, selectedPoint, showGrid, canvasDimensions, pxPerCm]); // Include all dependencies but stable ones
 
   // Input Handlers
+  const getEventPosition = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    
+    const rect = canvas.getBoundingClientRect();
+    let clientX: number, clientY: number;
+    
+    if ('touches' in e && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else if ('clientX' in e) {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    } else {
+      return { x: 0, y: 0 };
+    }
+    
+    // Account for canvas CSS scaling
+    // The canvas internal size might differ from its displayed size
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
+  };
+
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (dragStartPos.current) {
-      const rect = canvasRef.current!.getBoundingClientRect();
-      if (Math.hypot(e.clientX - rect.left - dragStartPos.current.x, e.clientY - rect.top - dragStartPos.current.y) > 3) {
+      const pos = getEventPosition(e);
+      if (Math.hypot(pos.x - dragStartPos.current.x, pos.y - dragStartPos.current.y) > 3) {
         dragStartPos.current = null; return;
       }
     }
     dragStartPos.current = null;
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const pos = getEventPosition(e);
+    const x = pos.x;
+    const y = pos.y;
 
     if (tool === 'add') {
       const newPoints = [...points];
@@ -297,26 +372,30 @@ export default function DrawingCanvas({ initialPoints, onChange, onError }: Prop
     }
   };
 
-  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (tool !== 'select') return;
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    dragStartPos.current = { x, y };
+    const pos = getEventPosition(e);
+    dragStartPos.current = { x: pos.x, y: pos.y };
     for (let i = 0; i < points.length; i++) {
-      if (Math.hypot(points[i].x - x, points[i].y - y) < 15) { setSelectedPoint(i); setIsDragging(true); return; }
+      if (Math.hypot(points[i].x - pos.x, points[i].y - pos.y) < 15) { 
+        setSelectedPoint(i); 
+        setIsDragging(true); 
+        if ('preventDefault' in e) e.preventDefault();
+        return; 
+      }
     }
     setSelectedPoint(null);
   };
 
-  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDragging || selectedPoint === null || tool !== 'select') return;
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const x = isFixedPoint(selectedPoint) ? 0 : Math.max(0, Math.min(canvasWidth, e.clientX - rect.left));
-    const y = Math.max(0, Math.min(canvasHeight, e.clientY - rect.top));
+    const pos = getEventPosition(e);
+    const x = isFixedPoint(selectedPoint) ? 0 : Math.max(0, Math.min(canvasDimensions.width, pos.x));
+    const y = Math.max(0, Math.min(canvasDimensions.height, pos.y));
     const newPoints = [...points];
     newPoints[selectedPoint] = { x, y };
     setPoints(newPoints);
+    if ('preventDefault' in e) e.preventDefault();
   };
 
   // Helper to evaluate Bezier curve
@@ -562,24 +641,61 @@ export default function DrawingCanvas({ initialPoints, onChange, onError }: Prop
   }, [points, pxPerCm]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
       {/* Left panel: Drawing canvas */}
-      <div className="card p-8">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-slate-900">Draw Profile</h2>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setTool('select')} className={`p-2 rounded-lg ${tool === 'select' ? 'bg-terracotta-500 text-white' : 'bg-slate-100'}`}><MousePointer size={20} /></button>
-            <button onClick={() => setTool('add')} className={`p-2 rounded-lg ${tool === 'add' ? 'bg-terracotta-500 text-white' : 'bg-slate-100'}`}><Plus size={20} /></button>
-            <button onClick={() => setTool('delete')} className={`p-2 rounded-lg ${tool === 'delete' ? 'bg-terracotta-500 text-white' : 'bg-slate-100'}`}><Trash2 size={20} /></button>
-            <div className="w-px h-8 bg-slate-300 mx-2" />
-            <button onClick={() => setShowGrid(!showGrid)} className={`p-2 rounded-lg ${showGrid ? 'bg-terracotta-500 text-white' : 'bg-slate-100'}`}><Grid3x3 size={20} /></button>
+      <div className="card p-4 sm:p-6 lg:p-8" ref={containerRef}>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-6 gap-3 sm:gap-0">
+          <h2 className="text-lg sm:text-xl font-semibold text-slate-900">Draw Profile</h2>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <button 
+              onClick={() => setTool('select')} 
+              className={`p-2.5 sm:p-2 rounded-lg touch-manipulation ${tool === 'select' ? 'bg-terracotta-500 text-white' : 'bg-slate-100'}`}
+              aria-label="Select tool"
+            >
+              <MousePointer size={20} />
+            </button>
+            <button 
+              onClick={() => setTool('add')} 
+              className={`p-2.5 sm:p-2 rounded-lg touch-manipulation ${tool === 'add' ? 'bg-terracotta-500 text-white' : 'bg-slate-100'}`}
+              aria-label="Add point"
+            >
+              <Plus size={20} />
+            </button>
+            <button 
+              onClick={() => setTool('delete')} 
+              className={`p-2.5 sm:p-2 rounded-lg touch-manipulation ${tool === 'delete' ? 'bg-terracotta-500 text-white' : 'bg-slate-100'}`}
+              aria-label="Delete point"
+            >
+              <Trash2 size={20} />
+            </button>
+            <div className="w-px h-8 bg-slate-300 mx-1 sm:mx-2" />
+            <button 
+              onClick={() => setShowGrid(!showGrid)} 
+              className={`p-2.5 sm:p-2 rounded-lg touch-manipulation ${showGrid ? 'bg-terracotta-500 text-white' : 'bg-slate-100'}`}
+              aria-label="Toggle grid"
+            >
+              <Grid3x3 size={20} />
+            </button>
           </div>
         </div>
         <div className="border-2 border-slate-300 rounded-xl overflow-hidden">
-          <canvas ref={canvasRef} width={canvasWidth} height={canvasHeight} onClick={handleCanvasClick} onMouseDown={handleCanvasMouseDown}
-            onMouseMove={handleCanvasMouseMove} onMouseUp={() => setIsDragging(false)} onMouseLeave={() => setIsDragging(false)} className="cursor-crosshair" />
+          <canvas 
+            ref={canvasRef} 
+            width={canvasDimensions.width} 
+            height={canvasDimensions.height} 
+            onClick={handleCanvasClick} 
+            onMouseDown={handleCanvasMouseDown}
+            onTouchStart={handleCanvasMouseDown}
+            onMouseMove={handleCanvasMouseMove} 
+            onTouchMove={handleCanvasMouseMove}
+            onMouseUp={() => setIsDragging(false)} 
+            onTouchEnd={() => setIsDragging(false)}
+            onMouseLeave={() => setIsDragging(false)} 
+            className="cursor-crosshair w-full touch-none" 
+            style={{ display: 'block', maxWidth: '100%' }}
+          />
         </div>
-        <p className="text-xs text-slate-500 mt-3">
+        <p className="text-xs text-slate-500 mt-2 sm:mt-3">
           Draw the profile curve (one side only). The shape will be rotated 360° around the vertical axis.
           <br />
           <strong>Canvas scale:</strong> Fixed at 10cm height for easy drawing. The height config controls row count, not canvas display.
@@ -587,16 +703,21 @@ export default function DrawingCanvas({ initialPoints, onChange, onError }: Prop
       </div>
 
       {/* Right panel: 3D preview */}
-      <div className="card p-8">
-        <h2 className="text-xl font-semibold text-slate-900 mb-6">3D Preview</h2>
+      <div className="card p-4 sm:p-6 lg:p-8">
+        <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4 sm:mb-6">3D Preview</h2>
         <div className="border-2 border-slate-300 rounded-xl overflow-hidden bg-slate-50">
-          <canvas ref={preview3DRef} width={500} height={500} className="w-full" />
+          <canvas 
+            ref={preview3DRef} 
+            width={500} 
+            height={500} 
+            className="w-full h-auto touch-none" 
+          />
         </div>
-        <div className="text-xs text-slate-600 mt-3 space-y-1">
-          <p><strong>Rotate:</strong> Left-click + drag</p>
+        <div className="text-xs text-slate-600 mt-2 sm:mt-3 space-y-1">
+          <p><strong>Rotate:</strong> Left-click/touch + drag</p>
           <p><strong>Pan:</strong> Right-click + drag</p>
-          <p><strong>Zoom:</strong> Scroll wheel</p>
-          <p><strong>Reset view:</strong> Double-click</p>
+          <p><strong>Zoom:</strong> Scroll wheel / pinch</p>
+          <p><strong>Reset view:</strong> Double-click/tap</p>
         </div>
       </div>
     </div>

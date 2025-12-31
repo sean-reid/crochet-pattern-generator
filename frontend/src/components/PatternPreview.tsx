@@ -17,38 +17,38 @@ export default function PatternPreview({ pattern, config }: Props) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Metadata */}
-      <div className="card p-8">
-        <h2 className="text-xl font-semibold text-slate-900 mb-4">
+      <div className="card p-4 sm:p-6 lg:p-8">
+        <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4">
           Pattern Summary
         </h2>
         
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <div>
-            <p className="text-sm text-slate-600">Total Rows</p>
-            <p className="text-2xl font-bold text-terracotta-500">
+            <p className="text-xs sm:text-sm text-slate-600">Total Rows</p>
+            <p className="text-xl sm:text-2xl font-bold text-terracotta-500">
               {pattern.metadata.total_rows}
             </p>
           </div>
           
           <div>
-            <p className="text-sm text-slate-600">Total Stitches</p>
-            <p className="text-2xl font-bold text-terracotta-500">
+            <p className="text-xs sm:text-sm text-slate-600">Total Stitches</p>
+            <p className="text-xl sm:text-2xl font-bold text-terracotta-500">
               {pattern.metadata.total_stitches}
             </p>
           </div>
           
           <div>
-            <p className="text-sm text-slate-600">Estimated Time</p>
-            <p className="text-2xl font-bold text-terracotta-500">
+            <p className="text-xs sm:text-sm text-slate-600">Estimated Time</p>
+            <p className="text-xl sm:text-2xl font-bold text-terracotta-500">
               {Math.round(pattern.metadata.estimated_time_minutes)} min
             </p>
           </div>
           
           <div>
-            <p className="text-sm text-slate-600">Yarn Needed</p>
-            <p className="text-2xl font-bold text-terracotta-500">
+            <p className="text-xs sm:text-sm text-slate-600">Yarn Needed</p>
+            <p className="text-xl sm:text-2xl font-bold text-terracotta-500">
               {pattern.metadata.yarn_length_meters.toFixed(1)} m
             </p>
           </div>
@@ -56,25 +56,25 @@ export default function PatternPreview({ pattern, config }: Props) {
       </div>
 
       {/* Row-by-row instructions */}
-      <div className="card p-8">
-        <h2 className="text-xl font-semibold text-slate-900 mb-4">
+      <div className="card p-4 sm:p-6 lg:p-8">
+        <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4">
           Row Instructions
         </h2>
         
-        <div className="space-y-2 max-h-[500px] overflow-y-auto">
+        <div className="space-y-2 max-h-[400px] sm:max-h-[500px] overflow-y-auto">
           {pattern.rows.map((row) => (
             <div
               key={row.row_number}
-              className="flex items-start gap-4 p-3 rounded-lg hover:bg-cream-100"
+              className="flex items-start gap-2 sm:gap-4 p-2 sm:p-3 rounded-lg hover:bg-cream-100"
             >
-              <div className="flex-shrink-0 w-16">
-                <span className="inline-block px-3 py-1 bg-terracotta-500 text-white text-sm font-semibold rounded-lg">
+              <div className="flex-shrink-0 w-12 sm:w-16">
+                <span className="inline-block px-2 sm:px-3 py-1 bg-terracotta-500 text-white text-xs sm:text-sm font-semibold rounded-lg">
                   R{row.row_number}
                 </span>
               </div>
               
-              <div className="flex-1">
-                <p className="text-sm text-slate-600 font-mono">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs sm:text-sm text-slate-600 font-mono break-words">
                   {formatPattern(row)}
                 </p>
                 <p className="text-xs text-slate-500 mt-1">
@@ -87,12 +87,12 @@ export default function PatternPreview({ pattern, config }: Props) {
       </div>
 
       {/* Materials needed */}
-      <div className="card p-8">
-        <h2 className="text-xl font-semibold text-slate-900 mb-4">
+      <div className="card p-4 sm:p-6 lg:p-8">
+        <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4">
           Materials Needed
         </h2>
         
-        <ul className="space-y-2 text-slate-700">
+        <ul className="space-y-2 text-sm sm:text-base text-slate-700">
           <li>• Yarn: {pattern.metadata.yarn_length_meters.toFixed(1)}m (plus 20% extra)</li>
           <li>• Hook: {config.yarn.recommended_hook_size_mm}mm</li>
           <li>• Stitch marker</li>

@@ -46,45 +46,45 @@ export default function ExportPanel({ pattern, config }: Props) {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="card p-8">
-        <h2 className="text-xl font-semibold text-slate-900 mb-6">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="card p-4 sm:p-6 lg:p-8">
+        <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4 sm:mb-6">
           Export Options
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           <button
             onClick={handleCopyText}
-            className="btn-secondary flex items-center justify-center gap-2"
+            className="btn-secondary flex items-center justify-center gap-2 touch-manipulation"
           >
             <Copy size={20} />
-            Copy to Clipboard
+            <span className="text-sm sm:text-base">Copy to Clipboard</span>
           </button>
 
           <button
             onClick={handleDownloadText}
-            className="btn-secondary flex items-center justify-center gap-2"
+            className="btn-secondary flex items-center justify-center gap-2 touch-manipulation"
           >
             <Download size={20} />
-            Download Text
+            <span className="text-sm sm:text-base">Download Text</span>
           </button>
 
           <button
             onClick={handleDownloadJSON}
-            className="btn-secondary flex items-center justify-center gap-2"
+            className="btn-secondary flex items-center justify-center gap-2 touch-manipulation"
           >
             <Download size={20} />
-            Download JSON
+            <span className="text-sm sm:text-base">Download JSON</span>
           </button>
         </div>
       </div>
 
-      <div className="card p-8">
-        <h2 className="text-xl font-semibold text-slate-900 mb-4">
+      <div className="card p-4 sm:p-6 lg:p-8">
+        <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4">
           Pattern Preview
         </h2>
 
-        <div className="bg-cream-100 p-6 rounded-lg font-mono text-sm whitespace-pre-wrap max-h-[600px] overflow-y-auto">
+        <div className="bg-cream-100 p-3 sm:p-4 lg:p-6 rounded-lg font-mono text-xs sm:text-sm whitespace-pre-wrap max-h-[500px] sm:max-h-[600px] overflow-y-auto overflow-x-auto">
           {generateTextPattern(pattern, config)}
         </div>
       </div>

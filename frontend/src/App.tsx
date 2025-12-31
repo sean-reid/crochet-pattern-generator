@@ -53,20 +53,20 @@ function App() {
     <div className="min-h-screen bg-cream-100">
       {/* Header */}
       <header className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <h1 className="text-3xl font-bold text-slate-900">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
             Crochet Pattern Generator
           </h1>
-          <p className="text-slate-600 mt-2">
+          <p className="text-sm sm:text-base text-slate-600 mt-1 sm:mt-2">
             Create custom amigurumi patterns from your drawings
           </p>
         </div>
       </header>
 
       {/* Navigation Tabs */}
-      <nav className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex space-x-1">
+      <nav className="bg-white border-b border-slate-200 overflow-x-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="flex space-x-1 min-w-max">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = currentTab === tab.id;
@@ -77,7 +77,7 @@ function App() {
                   onClick={() => !isDisabled && setCurrentTab(tab.id)}
                   disabled={isDisabled}
                   className={`
-                    flex items-center gap-2 px-6 py-4 font-medium border-b-2 transition-colors
+                    flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 font-medium border-b-2 transition-colors whitespace-nowrap
                     ${
                       isActive
                         ? 'border-terracotta-500 text-terracotta-500'
@@ -88,7 +88,7 @@ function App() {
                   `}
                 >
                   <Icon size={20} />
-                  <span>{tab.label}</span>
+                  <span className="text-sm sm:text-base">{tab.label}</span>
                 </button>
               );
             })}
@@ -98,16 +98,16 @@ function App() {
 
       {/* Error Display */}
       {error && (
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="bg-clay-500 text-white px-6 py-4 rounded-xl">
-            <p className="font-medium">Error</p>
-            <p className="mt-1">{error}</p>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+          <div className="bg-clay-500 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-xl">
+            <p className="font-medium text-sm sm:text-base">Error</p>
+            <p className="mt-1 text-sm">{error}</p>
           </div>
         </div>
       )}
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
         {currentTab === 'draw' && (
           <DrawingCanvas
             initialPoints={controlPoints}
